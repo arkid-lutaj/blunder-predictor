@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+.ipynb_checkpoints/
+
+# Bulk data never goes in git
+data/*
+*.zst
+*.csv
+
+# ...except the small committed samples the repo needs to be runnable
+!data/sample_positions.parquet
+!data/sample_games.pgn
+
+# Models: keep only the final one
+models/*
+!models/final_model.txt
