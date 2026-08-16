@@ -4,16 +4,20 @@ Build the challenge game: a static page, no server, no engine at runtime.
 
 How it works. Every position shown to the player already had EVERY legal move
 evaluated by Stockfish in eval_children.py, so the page knows the truth about
-any move the player picks without running anything. It presents a handful of
-candidate moves, the player picks one, and the page reveals whether that move
-was a blunder.
+any move the player picks without running anything. That is what lets the board
+be a real board rather than a multiple choice, with no engine and no chess
+library in the browser.
 
-The part that makes it more than a tactics trainer: alongside the truth, it
-shows what the model predicted. "A 1500 blunders here 23% of the time." Play
-ten positions and the page compares your hit rate against the model's
-prediction curve and reports the rating whose predicted blunder rate matches
-yours. That is a rating estimate produced by the error model, which is a much
-better demo of the project than a static chart.
+The part that makes it more than a tactics trainer: the model predicts how
+often a player of each rating blunders in each position, and it never saw the
+answers. Since it knows how hard every position is, how you do on a handful of
+them is enough to estimate your rating. The page runs a posterior over the
+rating grid rather than matching your hit rate to the nearest curve, so it can
+show an interval that visibly narrows as you play.
+
+POSITIONS ARE CHOSEN FOR INFORMATION, not at random. See position_info: a
+position where a 1000 and a 2000 blunder equally often tells the estimate
+nothing, however pretty the tactics are.
 
 Requires:
     eval_children.py run with --per-move (writes *_moves.jsonl)
@@ -75,6 +79,26 @@ def all_moves(moves, board):
     if not any(m["b"] for m in out) or all(m["b"] for m in out):
         return None
     return out
+
+
+def position_info(curve: np.ndarray, lo_i: int = 4, hi_i: int = 24) -> float:
+    """How well this position separates a weak player from a strong one.
+
+    The expected log-likelihood ratio, in nats, between the two hypotheses
+    "this player is 1000" and "this player is 2000", for one observation of
+    whether they blundered:
+
+        p_lo * log(p_lo/p_hi) + (1-p_lo) * log((1-p_lo)/(1-p_hi))
+
+    That is exactly the quantity the page's rating estimate accumulates, so
+    ranking on it maximises information per position asked. A position where
+    both ratings blunder 5% of the time scores ~0 and is a wasted question no
+    matter how pretty the tactics are.
+    """
+    p_lo = float(np.clip(curve[lo_i], 1e-6, 1 - 1e-6))
+    p_hi = float(np.clip(curve[hi_i], 1e-6, 1 - 1e-6))
+    return (p_lo * np.log(p_lo / p_hi)
+            + (1 - p_lo) * np.log((1 - p_lo) / (1 - p_hi)))
 
 
 def piece_sprite() -> str:
@@ -139,13 +163,11 @@ def main() -> int:
             per_move[rec["row_id"]] = rec["moves"]
 
     pool = kids[kids.row_id.isin(per_move)].sample(
-        min(len(kids), args.n * 3), random_state=args.seed)
+        min(len(kids), args.n * 20), random_state=args.seed)
 
     out_positions = []
 
     for row in pool.itertuples():
-        if len(out_positions) >= args.n:
-            break
         board = chess.Board(row.fen)
         cands = all_moves(per_move[row.row_id], board)
         if not cands:
@@ -156,7 +178,8 @@ def main() -> int:
             continue
         base = frow[feat_names].to_numpy(dtype=np.float32)[0]
 
-        curve = iso(booster.predict(rating_grid(base, feat_names, RATINGS)))
+        curve = np.asarray(iso(booster.predict(
+            rating_grid(base, feat_names, RATINGS))), dtype=float)
 
         out_positions.append({
             "id": int(row.row_id),
@@ -168,11 +191,37 @@ def main() -> int:
             "best": round(float(row.best_child_win), 2),
             "before": round(float(row.winpct_before), 2),
             "frac_blunder_moves": round(float(row.frac_blunder_moves), 4),
+            "_info": position_info(curve),
         })
 
     if not out_positions:
         print("FATAL: no usable positions. Did eval_children run with --per-move?")
         return 1
+
+    # Keep the most INFORMATIVE positions, not the first n that parsed.
+    #
+    # The page estimates your rating from how often you blunder, so a position
+    # only tells it something if weak and strong players actually behave
+    # differently there. Sampled at random, the median position separated a
+    # 1000 from a 2000 by about 6 percentage points and a quarter of them by
+    # almost nothing, which meant a 10-position run carried so little signal
+    # that the estimate sat 600 points above the truth for weak players.
+    # Ranking by expected log-likelihood ratio fixes that at no cost: the
+    # positions are still real, still varied, just chosen to be worth asking.
+    out_positions.sort(key=lambda p: -p["_info"])
+    kept = out_positions[:args.n]
+    info_all = np.median([p["_info"] for p in out_positions])
+    info_kept = np.median([p["_info"] for p in kept])
+    print(f"selected {len(kept)} of {len(out_positions)} candidates by "
+          f"discriminating power")
+    print(f"  median info/position {info_all:.4f} -> {info_kept:.4f} nats")
+    lo = np.mean([p["curve"][0] for p in kept])
+    hi = np.mean([p["curve"][-1] for p in kept])
+    print(f"  mean P(blunder) {lo:.1%} at {RATINGS[0]} vs {hi:.1%} at "
+          f"{RATINGS[-1]}")
+    out_positions = kept
+    for p in out_positions:
+        del p["_info"]
 
     # The rating curve IS the product here -- the page's whole claim is "a 1500
     # blunders here X% of the time". A flattened sweep ships a demo that
@@ -211,94 +260,169 @@ HTML = r"""<!doctype html>
 <title>Blunder Challenge</title>
 <style>
   :root{--bg:#12141a;--fg:#e8e8ea;--dim:#8b8f9a;--acc:#6ea8fe;--bad:#f2777a;
-        --good:#7ec699;--card:#1b1e26;--lt:#e9e2d0;--dk:#7d8a9e;--sel:#6ea8fe}
+        --good:#7ec699;--warn:#e6b455;--card:#1b1e26;--line:#262a34;
+        --lt:#e9e2d0;--dk:#7d8a9e;--sel:#6ea8fe}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--fg);
        font:15px/1.55 ui-sans-serif,system-ui,-apple-system,sans-serif}
-  .wrap{max-width:900px;margin:0 auto;padding:22px 16px 70px}
-  h1{font-size:21px;margin:0 0 3px;letter-spacing:-.01em}
-  .sub{color:var(--dim);font-size:13px;margin-bottom:18px}
-  .card{background:var(--card);border:1px solid #262a34;border-radius:12px;
-        padding:16px;margin-bottom:14px}
+  .wrap{max-width:940px;margin:0 auto;padding:22px 16px 70px}
+  h1{font-size:23px;margin:0 0 3px;letter-spacing:-.01em}
+  .sub{color:var(--dim);font-size:13.5px;margin-bottom:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+        padding:16px;margin-bottom:13px}
   .main{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
-  .boardwrap{display:flex;gap:10px}
-  .side{flex:1;min-width:250px}
+  .boardwrap{display:flex;gap:9px}
+  .side{flex:1;min-width:262px}
   svg.board{width:min(74vw,392px);height:auto;touch-action:none;
             border-radius:6px;user-select:none}
-  .evalbar{width:20px;height:min(74vw,392px);border-radius:5px;overflow:hidden;
-           background:#2b2f3a;position:relative;flex:none}
-  .evalbar i{position:absolute;left:0;right:0;bottom:0;background:#eee;
+  .evalcol{display:flex;flex-direction:column;align-items:center;gap:5px}
+  .evalbar{width:22px;height:min(74vw,392px);border-radius:5px;overflow:hidden;
+           background:#39404f;position:relative;flex:none}
+  .evalbar i{position:absolute;left:0;right:0;bottom:0;background:#e9edf5;
              transition:height .45s cubic-bezier(.4,0,.2,1)}
-  .evalbar b{position:absolute;left:0;right:0;height:1px;background:var(--acc);
-             opacity:.85;transition:bottom .45s}
+  .evalbar b{position:absolute;left:0;right:0;height:2px;background:var(--acc);
+             transition:bottom .45s}
+  .evalcap{font-size:10px;color:var(--dim);text-align:center;line-height:1.25;
+           width:46px}
   .row{display:flex;justify-content:space-between;align-items:baseline;
        gap:10px;flex-wrap:wrap}
-  .num{font:600 26px ui-monospace,SFMono-Regular,Menlo,monospace}
   .dim{color:var(--dim);font-size:13px}
-  input[type=range]{width:100%;accent-color:var(--acc)}
   button{font:600 14px ui-sans-serif,system-ui,sans-serif;background:#232735;
          color:var(--fg);border:1px solid #333949;border-radius:8px;
          padding:9px 14px;cursor:pointer}
   button:hover:not(:disabled){border-color:var(--acc)}
   button:disabled{opacity:.4;cursor:default}
-  .verdict{margin-top:12px;padding:11px 13px;border-radius:8px;
-           background:#1f232d;font-size:14px;min-height:44px}
+  button.primary{background:var(--acc);color:#0d1117;border-color:var(--acc)}
+  .modes{display:flex;gap:8px;flex-wrap:wrap}
+  .modes button.on{background:var(--acc);color:#0d1117;border-color:var(--acc)}
+  .verdict{margin-top:10px;padding:11px 13px;border-radius:9px;
+           background:#1f232d;font-size:14px;min-height:46px}
   .tried{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
   .tag{font:600 12px ui-monospace,monospace;padding:3px 8px;border-radius:6px;
        background:#232735;border:1px solid #333949}
   .tag.b{border-color:var(--bad);color:#ffd9da}
   .tag.g{border-color:var(--good);color:#d6f2e2}
-  svg.curve{width:100%;height:88px}
-  .ctr{text-align:center;margin-top:6px}
+  .est{font:800 46px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+       letter-spacing:-.02em}
+  .est.pending{color:var(--dim);font-size:30px}
+  .k{color:var(--dim);font-size:11px;letter-spacing:.09em;text-transform:uppercase}
+  .estrow{display:flex;gap:20px;align-items:flex-end;flex-wrap:wrap}
+  svg.post{width:100%;height:64px;display:block;margin-top:8px}
+  .prog{height:7px;background:#232735;border-radius:99px;overflow:hidden;
+        margin-top:9px}
+  .prog i{display:block;height:100%;background:var(--acc);
+          transition:width .35s}
+  ol{margin:8px 0 12px;padding-left:20px}
+  ol li{margin:3px 0;color:#c9cdd6;font-size:14px}
+  .big2{font:700 21px ui-monospace,monospace}
+  .pill{display:inline-block;font:600 11px ui-sans-serif;padding:2px 8px;
+        border-radius:99px;background:#232735;border:1px solid #333949;
+        color:var(--dim)}
   .lgl{fill:var(--sel);opacity:.32}
   .cap{fill:none;stroke:var(--sel);stroke-width:3.4;opacity:.55}
   .from{fill:var(--sel);opacity:.30}
+  .hide{display:none!important}
 </style>
 <div class="wrap">
   <h1>Blunder Challenge</h1>
-  <div class="sub">Every legal move in these positions was evaluated by
-    Stockfish, so the page knows the truth about whatever you play. The model
-    never saw the answer. It only predicts how often a player of a given rating
-    blunders here. Click a piece, then its destination. Promotions auto-queen.</div>
+  <div class="sub">Real positions from Lichess blitz games. Play the move you
+    would actually play, and find out what it cost.</div>
+
+  <div class="card" id="howto">
+    <b>What is going on here</b>
+    <ol>
+      <li>Every legal move in these positions was scored by Stockfish in
+          advance, so the page knows what any move you play is worth. There is
+          no engine running in your browser.</li>
+      <li>Separately, a model was trained to predict <i>how often humans of a
+          given rating blunder</i> in a position. It never saw the answers.</li>
+      <li>Because the model knows how hard each position is, your hit rate on a
+          handful of them is enough to estimate your rating.</li>
+    </ol>
+    <button id="hideHow">Got it, let me play</button>
+  </div>
 
   <div class="card">
-    <label class="dim">Your rating: <b id="eloLabel">1500</b></label>
-    <input type="range" id="elo" min="800" max="2450" step="50" value="1500">
-    <div class="row" style="margin-top:8px">
-      <div><span class="num" id="score">0</span><span class="dim"> / <span id="seen">0</span> clean</span></div>
-      <div class="dim">model expected <b id="expected">0.0</b> blunders</div>
-      <div class="dim">you played like <b id="implied">&mdash;</b></div>
+    <div class="k" style="margin-bottom:7px">Pick a mode</div>
+    <div class="modes" id="modes">
+      <button data-n="10">Quick run &middot; 10 positions</button>
+      <button data-n="25">Full run &middot; 25 positions</button>
+      <button data-n="0">Endless practice</button>
     </div>
+    <div class="dim" id="modeNote" style="margin-top:8px">
+      A run gives you a rating estimate at the end. Practice never ends and
+      keeps updating the estimate as you go.</div>
+  </div>
+
+  <div class="card" id="estCard">
+    <div class="estrow">
+      <div>
+        <div class="k">Your estimated rating</div>
+        <div class="est pending" id="est">not enough data yet</div>
+      </div>
+      <div style="flex:1;min-width:180px">
+        <div class="dim" id="estRange">Play a few positions and this fills in.</div>
+        <div class="dim" id="estNote" style="margin-top:3px"></div>
+      </div>
+    </div>
+    <svg class="post" id="post" viewBox="0 0 600 64" preserveAspectRatio="none"></svg>
+    <div class="row">
+      <span class="dim" id="progText">Nothing played yet</span>
+      <span class="dim"><b id="score">0</b> clean of <b id="seen">0</b></span>
+    </div>
+    <div class="prog"><i id="progBar" style="width:0%"></i></div>
   </div>
 
   <div class="card main">
     <div class="boardwrap">
-      <div class="evalbar" title="win% for the side to move, who is always at the bottom of the board. The line marks what the position was worth before you moved."><i id="ev"></i><b id="evRef"></b></div>
+      <div class="evalcol">
+        <div class="evalcap" id="evalTop">their<br>side</div>
+        <div class="evalbar" id="evalbar"><i id="ev"></i><b id="evRef"></b></div>
+        <div class="evalcap" id="evalBot">your<br>side</div>
+      </div>
       <svg class="board" id="board" viewBox="0 0 360 360"></svg>
     </div>
     <div class="side">
       <div class="row">
-        <div class="dim"><b id="toMove">White</b> to move</div>
+        <div><span class="pill" id="toMove">White to move</span></div>
         <div class="dim" id="posMeta"></div>
       </div>
-      <div class="verdict" id="verdict">Pick a move.</div>
+      <div class="verdict" id="verdict">Click one of your pieces, then where you
+        want it to go.</div>
       <div class="tried" id="tried"></div>
       <div class="row" style="margin-top:12px">
-        <button id="undo" disabled>&larr; Take back</button>
-        <button id="reveal">Show best</button>
-        <button id="next">Next &rarr;</button>
+        <button id="undo" disabled>Try another move</button>
+        <button id="reveal">Show the best move</button>
+        <button id="next" class="primary">Next position</button>
       </div>
-      <div id="curveBox" style="display:none;margin-top:12px">
-        <div class="dim">predicted blunder rate by rating</div>
-        <svg class="curve" id="curve" viewBox="0 0 600 88" preserveAspectRatio="none"></svg>
+      <div class="dim" style="margin-top:9px" id="hint">
+        The bar on the left is the engine's evaluation: how much of the board it
+        fills is your chance of winning. The blue line is where you started.
       </div>
+    </div>
+  </div>
+
+  <div class="card hide" id="resultCard">
+    <div class="k">Run complete</div>
+    <div class="estrow" style="margin:6px 0 10px">
+      <div><div class="est" id="finalEst">-</div></div>
+      <div style="flex:1;min-width:200px">
+        <div id="finalRange" class="dim"></div>
+        <div id="finalBlurb" class="dim" style="margin-top:5px"></div>
+      </div>
+    </div>
+    <div id="finalBreak" class="dim"></div>
+    <div style="margin-top:12px">
+      <button class="primary" id="again">Play again</button>
+      <button id="keepGoing">Keep practising</button>
     </div>
   </div>
 </div>
 <script>
 const $=i=>document.getElementById(i);
-let D=null,order=[],idx=0,seen=0,clean=0,expSum=0;
-let pos=null,brd=null,flip=false,sel=null,scored=false,tried=[],shownPositions=[];
+let D=null,order=[],idx=0;
+let pos=null,brd=null,flip=false,sel=null,scored=false,tried=[];
+let runN=10,played=[],finished=false;
 
 fetch('challenge.json').then(r=>r.json()).then(d=>{
   D=d;
@@ -307,10 +431,11 @@ fetch('challenge.json').then(r=>r.json()).then(d=>{
   sp.innerHTML='<defs>'+d.sprite+'</defs>';
   document.body.appendChild(sp);
   order=d.positions.map((_,i)=>i);
-  for(let i=order.length-1;i>0;i--){const j=(Math.random()*(i+1))|0;
-    [order[i],order[j]]=[order[j],order[i]];}
-  render();
+  shuffle(order);
+  setMode(10);
 });
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=(Math.random()*(i+1))|0;
+  [a[i],a[j]]=[a[j],a[i]];}}
 
 /* ---------- FEN ---------- */
 function parseFEN(f){
@@ -360,12 +485,11 @@ function legalFrom(i){const n=sqName(i);return pos.moves.filter(m=>m.u.slice(0,2
 
 /* ---------- interaction ---------- */
 function pick(i){
-  if(scored) return;
+  if(scored||finished) return;
   if(sel===null){ if(legalFrom(i).length){sel=i;draw();} return; }
   if(i===sel){ sel=null; draw(); return; }
   const cand=legalFrom(sel).filter(m=>m.u.slice(2,4)===sqName(i));
   if(!cand.length){ sel=legalFrom(i).length?i:null; draw(); return; }
-  // promotion: several moves share from/to. Queen unless it is the only option.
   const mv=cand.find(m=>m.u.length===5&&m.u[4]==='q')||cand[0];
   sel=null; play(mv);
 }
@@ -392,42 +516,128 @@ function apply(u){
   brd[from]=null;
 }
 
-/* ---------- eval bar ---------- */
+/* ---------- eval bar ----------
+   The board flips so the side to move is always at the bottom, and the bar is
+   stacked against it, so the fill grows from the bottom with the MOVER's win%.
+   Every number in the data is already from the mover's point of view, so there
+   is no conversion here and nowhere to invert a sign. */
 function setBar(win,ref){
-  /* The board auto-flips so the side to move is always at the BOTTOM, and the
-     bar is stacked against it, so the fill grows from the bottom with the
-     MOVER's win%. That is also the perspective every number in the data uses
-     (eval_children scored each child from the mover's point of view), so no
-     conversion is needed and there is nowhere to invert a sign.
-
-     An earlier version converted to White's perspective and then drew
-     (100 - w) from the bottom, which made the light fill grow as the side to
-     move got WORSE -- backwards under any eval-bar convention. */
   $('ev').style.height=Math.max(0,Math.min(100,win)).toFixed(1)+'%';
   $('evRef').style.bottom=Math.max(0,Math.min(100,ref)).toFixed(1)+'%';
+}
+
+/* ---------- rating estimate ----------
+   A posterior over the rating grid rather than a nearest-match lookup. For each
+   rating r the model gives p_i(r), the chance a player of that rating blunders
+   in position i, so the likelihood of what you actually did is the product of
+   p_i(r) for the ones you blundered and (1 - p_i(r)) for the ones you did not.
+   A flat prior over the grid turns that into a posterior, which gives both a
+   best estimate and an honest interval that visibly narrows as you play. */
+function posterior(){
+  if(!played.length) return null;
+  const n=D.ratings.length, log=new Array(n).fill(0);
+  for(const rec of played){
+    const c=D.positions[rec.p].curve;
+    for(let k=0;k<n;k++){
+      const p=Math.min(Math.max(c[k],1e-6),1-1e-6);
+      log[k]+= rec.blundered ? Math.log(p) : Math.log(1-p);
+    }
+  }
+  const mx=Math.max(...log);
+  const w=log.map(v=>Math.exp(v-mx));
+  const s=w.reduce((a,b)=>a+b,0);
+  const post=w.map(v=>v/s);
+  let best=0; post.forEach((v,k)=>{ if(v>post[best]) best=k; });
+  // central 80% interval from the cumulative posterior
+  let cum=0, lo=0, hi=n-1;
+  for(let k=0;k<n;k++){ cum+=post[k];
+    if(cum>=0.10){ lo=k; break; } }
+  cum=0;
+  for(let k=0;k<n;k++){ cum+=post[k];
+    if(cum>=0.90){ hi=k; break; } }
+  return {post, best:D.ratings[best], lo:D.ratings[lo], hi:D.ratings[hi]};
+}
+function drawPosterior(pt){
+  const W=600,H=64,n=D.ratings.length;
+  if(!pt){ $('post').innerHTML=''; return; }
+  const mx=Math.max(...pt.post);
+  const bars=pt.post.map((v,k)=>{
+    const w=W/n, x=k*w, h=Math.max(1,(v/mx)*(H-14));
+    const inside=D.ratings[k]>=pt.lo&&D.ratings[k]<=pt.hi;
+    return `<rect x="${x+0.6}" y="${H-h}" width="${w-1.2}" height="${h}"
+             fill="${inside?'#6ea8fe':'#39404f'}" rx="1"/>`;
+  }).join('');
+  const bi=D.ratings.indexOf(pt.best), bw=W/n;
+  $('post').innerHTML=bars+
+    `<text x="4" y="11" fill="#8b8f9a" font-size="9">${D.ratings[0]}</text>`+
+    `<text x="${W-4}" y="11" fill="#8b8f9a" font-size="9" text-anchor="end">${D.ratings[n-1]}</text>`+
+    `<line x1="${bi*bw+bw/2}" y1="0" x2="${bi*bw+bw/2}" y2="${H}"
+      stroke="#fff" stroke-width="1.4" opacity=".8"/>`;
+}
+function refreshEstimate(){
+  const pt=posterior();
+  drawPosterior(pt);
+  const done=played.length, clean=played.filter(r=>!r.blundered).length;
+  $('score').textContent=clean; $('seen').textContent=done;
+  if(runN){
+    $('progText').textContent=`Position ${Math.min(done+ (finished?0:1),runN)} of ${runN}`;
+    $('progBar').style.width=(100*done/runN).toFixed(0)+'%';
+  }else{
+    $('progText').textContent=`${done} played, practice mode`;
+    $('progBar').style.width=(100*Math.min(done/20,1)).toFixed(0)+'%';
+  }
+  if(!pt||done<3){
+    $('est').textContent='not enough data yet';
+    $('est').classList.add('pending');
+    $('estRange').textContent=`Play ${Math.max(0,3-done)} more position${3-done===1?'':'s'} for a first estimate.`;
+    $('estNote').textContent='';
+    return;
+  }
+  $('est').classList.remove('pending');
+  $('est').textContent=pt.best;
+  const width=pt.hi-pt.lo;
+  $('estRange').innerHTML=`Probably between <b>${pt.lo}</b> and <b>${pt.hi}</b>.`;
+  $('estNote').textContent = width>700
+    ? 'Very rough so far. The range narrows quickly as you play more.'
+    : width>350
+      ? 'Getting there. A few more positions will tighten this.'
+      : 'Reasonably settled now.';
 }
 
 /* ---------- a turn ---------- */
 function play(mv){
   scored=true; tried.push(mv);
   apply(mv.u); draw();
-  const pred=curAt();
-  if(tried.length===1){ seen++; expSum+=pred; if(!mv.b) clean++;
-    shownPositions.push(pos); }
-  setBar(mv.w,pos.best);
+  if(tried.length===1){
+    played.push({p:order[idx], blundered:!!mv.b});
+  }
+  setBar(mv.w,pos.before);
   const best=pos.moves.reduce((a,b)=>b.w>a.w?b:a);
+  const pred=curAt();
   $('verdict').innerHTML =
-    (mv.b?`<b style="color:var(--bad)">Blunder.</b> `:`<b style="color:var(--good)">Fine.</b> `)
-    + `<b>${mv.s}</b> leaves ${mv.w.toFixed(1)}% win, `
-    + (mv.d<0.05?`the best there is.`:`${mv.d.toFixed(1)} points below <b>${best.s}</b> (${best.w.toFixed(1)}%).`)
-    + `<br><span class="dim">The model predicted a ${$('elo').value} blunders here
-       <b>${(pred*100).toFixed(1)}%</b> of the time.
-       ${(pos.frac_blunder_moves*100).toFixed(0)}% of the ${pos.n_moves} legal moves lose 20%+.</span>`;
+    (mv.b?`<b style="color:var(--bad)">That one loses a lot.</b> `
+        :`<b style="color:var(--good)">Fine move.</b> `)
+    + `<b>${mv.s}</b> leaves you with a ${mv.w.toFixed(0)}% chance of winning`
+    + (mv.d<0.05?`, the best available.`
+              :`, which is ${mv.d.toFixed(0)} points worse than <b>${best.s}</b> (${best.w.toFixed(0)}%).`)
+    + `<br><span class="dim">Players around ${pt_label()} blunder here about
+       <b>${(pred*100).toFixed(0)}%</b> of the time.
+       ${Math.round(pos.frac_blunder_moves*100)}% of the ${pos.n_moves} legal
+       moves lose 20 points or more.</span>`;
   paintTried();
-  $('undo').disabled=false; $('curveBox').style.display='block'; drawCurve();
-  $('score').textContent=clean; $('seen').textContent=seen;
-  $('expected').textContent=expSum.toFixed(1);
-  $('implied').textContent=implied();
+  $('undo').disabled=false;
+  refreshEstimate();
+  if(runN && played.length>=runN) finishRun();
+}
+function pt_label(){
+  const pt=posterior();
+  return pt&&played.length>=3 ? pt.best : 'your level';
+}
+function curAt(){
+  const pt=posterior();
+  const r = pt&&played.length>=3 ? pt.best : 1500;
+  const i=D.ratings.indexOf(r);
+  return pos.curve[i<0?Math.floor(D.ratings.length/2):i];
 }
 function paintTried(){
   $('tried').innerHTML=tried.map(m=>
@@ -435,53 +645,69 @@ function paintTried(){
 }
 $('undo').onclick=()=>{
   brd=parseFEN(pos.fen); scored=false; sel=null; draw();
-  setBar(pos.before,pos.best);
-  $('verdict').innerHTML='Try another move. <span class="dim">Only your first '
-    +'attempt counted towards the score.</span>';
+  setBar(pos.before,pos.before);
+  $('verdict').innerHTML='Try a different move. <span class="dim">Only your '
+    +'first attempt counted towards the estimate.</span>';
   $('undo').disabled=true;
 };
 $('reveal').onclick=()=>{
   const best=pos.moves.reduce((a,b)=>b.w>a.w?b:a);
   const worst=pos.moves.reduce((a,b)=>b.w<a.w?b:a);
-  $('verdict').innerHTML=`Best: <b>${best.s}</b> (${best.w.toFixed(1)}%). `
-    +`Worst: <b>${worst.s}</b> (${worst.w.toFixed(1)}%, -${worst.d.toFixed(1)}). `
+  $('verdict').innerHTML=`Best: <b>${best.s}</b> (${best.w.toFixed(0)}% win). `
+    +`Worst: <b>${worst.s}</b> (${worst.w.toFixed(0)}%). `
     +`<span class="dim">${pos.moves.filter(m=>m.b).length} of ${pos.moves.length} `
-    +`legal moves lose 20%+.</span>`;
+    +`legal moves throw away 20 points or more.</span>`;
 };
-$('next').onclick=()=>{ idx=(idx+1)%order.length; render(); };
-$('elo').oninput=()=>{ $('eloLabel').textContent=$('elo').value;
-  if(D){ $('implied').textContent=implied(); if(scored) drawCurve(); } };
+$('next').onclick=()=>{ if(finished) return; idx=(idx+1)%order.length; render(); };
+$('hideHow').onclick=()=>$('howto').classList.add('hide');
+$('again').onclick=()=>setMode(runN||10);
+$('keepGoing').onclick=()=>{ runN=0; finished=false;
+  $('resultCard').classList.add('hide'); markMode(); refreshEstimate();
+  idx=(idx+1)%order.length; render(); };
+document.querySelectorAll('#modes button').forEach(b=>{
+  b.onclick=()=>setMode(+b.dataset.n);
+});
+
+function markMode(){
+  document.querySelectorAll('#modes button').forEach(b=>
+    b.classList.toggle('on', +b.dataset.n===runN));
+}
+function setMode(n){
+  runN=n; played=[]; finished=false; idx=0;
+  shuffle(order);
+  $('resultCard').classList.add('hide');
+  markMode(); render(); refreshEstimate();
+}
 
 function render(){
   pos=D.positions[order[idx]];
   brd=parseFEN(pos.fen); flip=!pos.white; sel=null; scored=false; tried=[];
-  draw(); setBar(pos.before,pos.best);
-  $('toMove').textContent=pos.white?'White':'Black';
+  draw(); setBar(pos.before,pos.before);
+  $('toMove').textContent=(pos.white?'White':'Black')+' to move - that is you';
   $('posMeta').textContent=pos.n_moves+' legal moves';
-  $('verdict').textContent='Pick a move.';
+  $('verdict').textContent='Click one of your pieces, then where you want it to go.';
   $('tried').innerHTML=''; $('undo').disabled=true;
-  $('curveBox').style.display='none';
+  $('evalTop').innerHTML='their<br>side';
+  $('evalBot').innerHTML='your<br>side';
 }
 
-/* ---------- model readouts ---------- */
-function ri(){return D.ratings.indexOf(+$('elo').value);}
-function curAt(){const i=ri();return pos.curve[i<0?0:i];}
-function implied(){
-  if(seen<5) return `\u2014 (need ${5-seen} more)`;
-  const obs=(seen-clean)/seen; let best=0,bd=1e9;
-  D.ratings.forEach((r,k)=>{
-    const m=shownPositions.reduce((s,p)=>s+p.curve[k],0)/shownPositions.length;
-    if(Math.abs(m-obs)<bd){bd=Math.abs(m-obs);best=r;}
-  });
-  return best+(bd>0.15?'?':'');
-}
-function drawCurve(){
-  const W=600,H=88,pad=6,n=pos.curve.length,mx=Math.max(...pos.curve,0.01);
-  const pts=pos.curve.map((v,i)=>[pad+i*(W-2*pad)/(n-1),H-pad-(v/mx)*(H-2*pad)]);
-  const d=pts.map((q,i)=>(i?'L':'M')+q[0].toFixed(1)+' '+q[1].toFixed(1)).join(' ');
-  const i=ri(),cx=pad+(i<0?0:i)*(W-2*pad)/(n-1);
-  $('curve').innerHTML=`<path d="${d}" fill="none" stroke="#6ea8fe" stroke-width="2"/>`
-    +`<line x1="${cx}" y1="0" x2="${cx}" y2="${H}" stroke="#8b8f9a" stroke-dasharray="3 3"/>`;
+function finishRun(){
+  finished=true;
+  const pt=posterior();
+  const clean=played.filter(r=>!r.blundered).length;
+  $('finalEst').textContent=pt?pt.best:'-';
+  $('finalRange').innerHTML=pt
+    ? `Most likely between <b>${pt.lo}</b> and <b>${pt.hi}</b>, based on
+       ${played.length} positions.` : '';
+  $('finalBreak').innerHTML=`You played ${clean} clean moves out of
+    ${played.length}. `+ (played.length-clean===0
+      ? 'No blunders at all, so the estimate is a lower bound: play a longer run to pin it down.'
+      : `You blundered ${played.length-clean} time${played.length-clean===1?'':'s'}.`);
+  $('finalBlurb').textContent = pt && (pt.hi-pt.lo)>600
+    ? 'That is still a wide range. A 25 position run gives a much tighter answer.'
+    : 'A longer run would tighten this further.';
+  $('resultCard').classList.remove('hide');
+  $('resultCard').scrollIntoView({behavior:'smooth',block:'center'});
 }
 </script>
 """

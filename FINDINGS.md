@@ -1051,3 +1051,73 @@ Verified after generation: 0 missing-metric placeholders, 0 unformatted
 template braces, balanced tags (41 `<td>`/41 `</td>`, 12 `<tr>`/12 `</tr>`),
 and every headline number cross-checked to appear on the page exactly as it
 appears in the JSON it came from.
+
+## The demo, v3: modes, and an honest rating estimate
+
+Three problems with v2, all reported by a first-time user rather than found by
+testing: the rating slider had no obvious purpose, nothing explained what the
+page was for, and the rating guess was a small number in a corner that gave no
+sense of whether it was firming up.
+
+What changed:
+
+- **Modes.** A 10-position quick run, a 25-position full run, or endless
+  practice. Runs end with a result card; practice just keeps updating.
+- **The estimate is the headline**, with a plain-language range under it and a
+  plot of the whole posterior, so "it narrows as you play" is visible rather
+  than asserted.
+- **The eval bar is labelled** "your side" and "their side" and explained in a
+  caption. It was unlabelled, which is why it read as a mystery gauge.
+- The rating slider is gone. It existed to pick a point on the model's curve,
+  which is a developer's question, not a player's. The page now quotes the
+  prediction at *your own* estimated rating.
+
+### The estimate is a posterior, not a lookup
+
+v2 found the rating whose mean predicted blunder rate was closest to the
+observed one. That gives a point and no uncertainty, and it jumps around
+wildly at small n because the observed rate can only be 0/5, 1/5, 2/5 and so on.
+
+Now, for each rating r on the grid, the likelihood of what you actually did is
+the product of p_i(r) over positions you blundered and (1 - p_i(r)) over the
+ones you did not. A flat prior turns that into a posterior, which gives a mode
+and a real interval.
+
+### Selecting positions by information, and why it mattered
+
+Testing the estimator by simulation (200 simulated players per rating, using
+the real curves) exposed something the maths alone did not: **a true 1000
+player was being told they were 1668** after 10 positions.
+
+The cause was position selection, not the estimator. Sampled at random, the
+median challenge position separated a 1000 from a 2000 by about 6 percentage
+points, and a quarter of them by nearly nothing. Over 10 positions an 800
+player was expected to blunder 0.88 times against 0.13 for a 2450, which is not
+enough signal to place anyone.
+
+Positions are now ranked by the expected log-likelihood ratio between a 1000
+and a 2000, which is exactly the quantity the posterior accumulates:
+
+| | random sample | ranked by information |
+|---|---:|---:|
+| median info per position | 0.037 nats | **0.117 nats** |
+| mean P(blunder) at 800 | 8.8% | **20.0%** |
+| mean P(blunder) at 2450 | 1.3% | 1.7% |
+
+Recovery after the change, mean estimate over 200 simulated players:
+
+| true rating | n=10 | n=25 | n=60 |
+|---|---:|---:|---:|
+| 1000 | 1269 (was 1668) | 1101 | **1046** |
+| 1600 | 1733 | 1701 | 1641 |
+| 2200 | 2220 | 2223 | 2186 |
+
+The 80% interval covered the truth 77-100% of the time across all cells, and
+its width falls monotonically with n, which is the property that makes the
+"keep playing and it narrows" promise real.
+
+**A residual bias at n=10 remains and is not a bug.** Ten binary outcomes
+cannot pin down a rating, and the bias runs upward because most players blunder
+zero or one times in ten positions and zero is weak evidence. The page says
+"very rough so far" below about 700 points of width, which is the honest way to
+present it. The 25-position run is the one to quote.
