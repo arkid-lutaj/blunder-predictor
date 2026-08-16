@@ -981,3 +981,72 @@ there is no sign left to invert.
 Known limitation, stated on the page: promotions auto-queen. The data carries
 underpromotions and `apply()` handles them correctly, but the click-to-move UI
 has no way to ask which piece, so it always picks the queen.
+
+## Phase 8: the difficulty curves
+
+Four REAL positions taken from the dataset rather than composed. Composed FENs
+kept failing to have the property their caption claimed -- a hand-built
+"hanging piece" position measured `hanging_own = 0` -- so the positions are
+selected by their measured features and the captions are therefore true.
+
+Predicted P(blunder), 800 -> 2400 Elo, `full_free_noclock`:
+
+| position | at 800 | at 2400 | span |
+|---|---:|---:|---:|
+| Sharp middlegame (30 pieces, tension 7, 45 legal) | 22.67% | 2.75% | 8.2x |
+| Piece hanging (own queen loose, 43 legal) | 22.39% | 2.70% | 8.3x |
+| Quiet endgame (12 pieces, no tension, 12 legal) | 13.19% | 3.12% | 4.2x |
+| Opening (move 2) | 0.57% | 0.04% | 14.6x |
+
+**The two that start together do not stay together.** The sharp middlegame and
+the hanging piece both open near 22.5%, but by 1200 they have separated by
+about 7 points: a loose piece is something stronger players simply stop
+missing, while a sharp middlegame stays dangerous well up the rating scale.
+That divergence is the figure's actual content, and it is not visible from any
+single-number difficulty measure.
+
+### The extrapolation caveat is implemented, and it does not fire
+
+A rating sweep is an extrapolation -- a 2200 rarely reaches the position a 1200
+blundered in -- so the script counts TRAINING rows in each position's
+neighbourhood (same rating +/-100, legal moves +/-6, material +/-150cp, total
+pieces +/-6) and draws unsupported stretches faint.
+
+**The support floor is derived, not picked.** At a 3.952% base rate, 50 blunder
+events -- the usual floor for a stable rate estimate -- needs **1,265 rows**. An
+arbitrary round number like 200 rows would mean ~8 events, which cannot pin
+down a probability.
+
+At that floor all four positions are supported across the whole 800-2400 range
+(33/33 points, medians 23k to 168k rows), so nothing greys out. That is a real
+result of having 6.27M training rows, not a broken check: support peaks at
+1600-1800 and falls at both extremes exactly as it should, and the mechanism
+was verified to fire by re-running at a 30,000-row floor, where the quiet
+endgame correctly collapses to 9 of 33 supported points.
+
+Stated plainly: **on this dataset these curves are interpolation, not
+extrapolation.** On a smaller sample the same code would grey out the ends.
+
+## The landing page generates its own numbers
+
+`build_site.py` reads `metrics/*.json` at build time rather than carrying
+hardcoded figures. A hand-written page drifts the moment a model is retrained,
+and stale numbers beside a live demo are worse than no page. If a metrics file
+is missing the section says so instead of inventing a value.
+
+This forced one upstream change: `evaluate.py` printed the within-band
+calibration table but only ever wrote it to a log, so it now also stores typed
+`bands` records in its JSON. Re-parsing formatted strings back into numbers is
+exactly how a site starts disagreeing with its data.
+
+**One rendering bug worth recording.** Band labels are strings like `<1200`.
+Written unescaped into a table cell the browser reads `<1200` as the start of a
+malformed tag and swallows the rest of the cell, so the row vanishes from the
+rendered page while looking perfectly fine in the HTML source. Caught by
+counting rendered rows (3) against expected rows (4), not by reading the
+output. Everything from the metrics files is escaped now.
+
+Verified after generation: 0 missing-metric placeholders, 0 unformatted
+template braces, balanced tags (41 `<td>`/41 `</td>`, 12 `<tr>`/12 `</tr>`),
+and every headline number cross-checked to appear on the page exactly as it
+appears in the JSON it came from.

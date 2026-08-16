@@ -206,6 +206,10 @@ def main() -> int:
     fig, axes = plt.subplots(2, 2, figsize=(10, 9))  # each band spans a
     # different probability range, so autoscale per panel rather than sharing
     band_rows = []
+    # Same content as band_rows but typed rather than pre-formatted, because
+    # build_site.py renders this table on the landing page and reformatting
+    # strings back into numbers is how a site starts drifting from its data.
+    band_records = []
     for axb, (lo, hi, lab) in zip(axes.ravel(), RATING_BANDS):
         m = (test.mover_elo >= lo) & (test.mover_elo < hi)
         m = m.to_numpy()
@@ -219,9 +223,15 @@ def main() -> int:
                 continue
             axb.plot(pr, ob, "-o", ms=3, color=colour(name), label=name)
             top = max(top, pr.max(), ob.max())
+            ece_b = evaluate(y[m], p["cal"][m], base)["ece"]
             band_rows.append([lab, name, f"{m.sum():,}",
                               f"{y[m].mean():.4f}", f"{p['cal'][m].mean():.4f}",
-                              f"{evaluate(y[m], p['cal'][m], base)['ece']:.4f}"])
+                              f"{ece_b:.4f}"])
+            band_records.append({"band": lab, "model": name,
+                                 "rows": int(m.sum()),
+                                 "observed": float(y[m].mean()),
+                                 "predicted": float(p["cal"][m].mean()),
+                                 "ece": float(ece_b)})
         top = max(top, 0.01) * 1.05
         axb.plot([0, top], [0, top], ":", color="#888", lw=1)
         axb.set_title(f"{lab}  (n={m.sum():,}, base {y[m].mean():.2%})")
@@ -281,7 +291,8 @@ def main() -> int:
                        "test_rows": int(len(test)),
                        "eligible_fraction": float(eligible.mean()),
                        "eligible_min_winpct": ELIGIBLE_MIN_WINPCT,
-                       "all_rows": full, "eligible_rows": elig}, fh, indent=2)
+                       "all_rows": full, "eligible_rows": elig,
+                       "bands": band_records}, fh, indent=2)
         print(f"\nwrote {args.metrics_out}")
 
     print(f"wrote 3 figures to {args.out}")

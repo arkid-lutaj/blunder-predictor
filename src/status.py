@@ -127,8 +127,9 @@ def main() -> int:
     base_json = find(f"metrics/baselines*{p}*.json")
     decomp = find("metrics/decomposition*.json")
     figs = find("figures/*.png")
-    site = find("docs/positions.json")
+    site = find("docs/index.html")
     challenge = find("docs/challenge.json")
+    readme = find("README.md")
 
     print("\nARTEFACTS")
     checks = [
@@ -136,7 +137,8 @@ def main() -> int:
         ("splits", splits), ("children (Stockfish)", children),
         ("models", models), ("baseline metrics", base_json),
         ("decomposition", decomp),
-        ("figures", figs), ("site data", site), ("challenge data", challenge),
+        ("figures", figs), ("site index", site), ("challenge data", challenge),
+        ("README", readme),
     ]
     for name, got in checks:
         if got:
@@ -254,8 +256,9 @@ def main() -> int:
                     "RUNBOOK.md L777"),
                    ("src/validate_puzzles.py", "external validation on "
                     "Lichess puzzles", "RUNBOOK.md L825"),
-                   ("src/build_site.py", "docs/positions.json for the site",
-                    "RUNBOOK.md L992")]
+                   ("src/build_site.py", "docs/index.html landing page",
+                    "RUNBOOK.md L992"),
+                   ("README.md", "the writeup", "pull numbers from FINDINGS")]
         missing = [x for x in pending if not os.path.exists(x[0])]
         if missing:
             body = "\n".join(f"# {path:28} {what}  ({where})"
@@ -269,10 +272,21 @@ def main() -> int:
                  "  must move mover_elo, opp_elo, mean_elo and elo_gap\n"
                  "  TOGETHER -- see the bug note in FINDINGS.md.")
         else:
-            step("Everything is built. Remaining: the README.",
-                 f"python src/validate_puzzles.py --puzzles data/puzzles.csv \\\n"
-                 f"    --model {shippable}\n"
-                 f"# then write README.md and enable GitHub Pages on /docs")
+            remote = os.popen("git remote").read().strip()
+            if not remote:
+                step("Everything is built. The work is LOCAL ONLY.",
+                     "# create an empty repo on GitHub, then:\n"
+                     "git remote add origin <url>\n"
+                     "git push -u origin master\n"
+                     "# then Settings -> Pages -> deploy from branch, /docs",
+                     "Nothing here is backed up: no remote is configured and\n"
+                     "  data/ and models/ are gitignored, so a disk failure\n"
+                     "  loses every parquet and every trained model too.")
+            else:
+                step("Everything is built and a remote exists.",
+                     "git push\n"
+                     "# then Settings -> Pages -> deploy from branch, /docs",
+                     "Re-run any stage freely; every script is idempotent.")
 
     print("\n" + "-" * 74)
     print("  full plan: RUNBOOK.md   |   this check: python src/status.py")
