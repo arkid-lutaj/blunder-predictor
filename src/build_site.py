@@ -104,7 +104,7 @@ PAGE = """<!doctype html>
   {puzzle_img}
 
   <div class="foot">
-    Built on one month of Lichess blitz &mdash; 86.5M games scanned,
+    Built on one month of Lichess blitz. 86.5M games scanned,
     {test_rows} held-out test rows. Every number on this page is generated from
     <code>metrics/*.json</code> at build time, so it cannot drift from what was
     measured.
@@ -181,8 +181,8 @@ def main() -> int:
         headline_quote = (
             f"A {band_label(lo_lab)} rated player blunders in "
             f"{bands[0]['p']:.1%} of these positions. "
-            f"A {band_label(bands[-1]['band'])} player, {bands[-1]['p']:.1%} "
-            f"&mdash; facing minefields of the same thickness.")
+            f"A {band_label(bands[-1]['band'])} player, {bands[-1]['p']:.1%}, "
+            f"out of positions that are just as dangerous.")
     else:
         decomp_table, headline_quote = miss, (
             "A calibrated probability of human error, by rating.")

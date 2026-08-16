@@ -258,9 +258,8 @@ HTML = r"""<!doctype html>
   <h1>Blunder Challenge</h1>
   <div class="sub">Every legal move in these positions was evaluated by
     Stockfish, so the page knows the truth about whatever you play. The model
-    never saw the answer &mdash; it only predicts how often a player of a given
-    rating blunders here. Click a piece, then its destination. Promotions
-    auto-queen.</div>
+    never saw the answer. It only predicts how often a player of a given rating
+    blunders here. Click a piece, then its destination. Promotions auto-queen.</div>
 
   <div class="card">
     <label class="dim">Your rating: <b id="eloLabel">1500</b></label>
