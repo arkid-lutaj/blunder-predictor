@@ -50,7 +50,7 @@ decile. Should rise monotonically if the model tracks difficulty:
 
   monotone up-steps 5 of 9
 
-wrote \puzzle_validation.png
+wrote figures/puzzle_validation.png
 
 ======================================================================
 CAVEAT, and why it does not sink the result

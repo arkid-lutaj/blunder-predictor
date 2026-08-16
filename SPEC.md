@@ -1,4 +1,8 @@
-# Chess Blunder Predictor
+# Project spec and invariants
+
+The rules this codebase is built to. Anything here is load-bearing: several of
+these were learned by getting them wrong first, and the reasons are in
+FINDINGS.md.
 
 ## What this is
 A human error model: P(blunder | position, rating). NOT an engine clone. The
@@ -29,6 +33,11 @@ Time spent on PREVIOUS moves is fine.
 - Every script takes argparse args and writes to an explicit --out path.
 - Set seeds. Print row counts and base rates at every stage.
 - Prefer plain pandas + numpy. No new dependencies without asking.
+- A rating sweep must move mover_elo, opp_elo, mean_elo and elo_gap TOGETHER.
+  They are algebraically linked, so moving one alone asks the model an
+  incoherent question. Use build_features.rating_grid, never a bare sweep.
+- A fix is not done until something executes the fixed path. Documentation
+  claiming a fix is worse than a known-open bug.
 
 ## Naming
 Blitz and rapid have SEPARATE Glicko2 rating pools, so a 1500 blitz and a 1500
@@ -37,8 +46,10 @@ suffix: positions_blitz_YYYY-MM.parquet -> features_blitz.parquet -> and so on.
 Every script takes an explicit --data path. Never hardcode a filename.
 
 ## Layout
+```
 src/            scripts
 src/tactical.py hanging pieces and tension, written and tested, do not rewrite
 data/           parquet (gitignored)
 models/         pickles (gitignored)
 figures/        plots (committed)
+```

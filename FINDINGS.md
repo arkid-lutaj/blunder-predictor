@@ -1,8 +1,8 @@
 # Findings
 
 Measured facts about **this** dataset, not general advice. Everything here came
-out of an actual run and is traceable to a command. RUNBOOK.md is the plan;
-this is what the data turned out to be. Add to it as you go, and pull the
+out of an actual run and is traceable to a command. SPEC.md holds the
+invariants; this is what the data turned out to be. Add to it as you go, and pull the
 README numbers from here rather than re-deriving them.
 
 Current dataset: `positions_blitz_2026-06.parquet`, 25,000 games, 1,667,618
@@ -816,7 +816,7 @@ puzzle's own Elo directly.
 | Pearson r | +0.1134 |
 | decile monotone up-steps | 8 of 9 |
 
-**This does not meet the acceptance bar.** RUNBOOK Phase 9 called for 0.4-0.6
+**This does not meet the acceptance bar.** Phase 9 was scoped to want 0.4-0.6
 as a strong result. We got +0.11. At n=16,031 the standard error is ~0.008, so
 the correlation is ~14 se from zero — **definitively positive and definitively
 small**. Report it that way; do not round it up into a success.

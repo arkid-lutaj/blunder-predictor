@@ -249,15 +249,15 @@ def main() -> int:
              "  against, or row_id resolves to unrelated positions.", "5 min")
 
     else:
-        # These phases are specified in RUNBOOK.md but not yet implemented.
+        # Specified in the project plan but not yet implemented.
         # Printing a command for a script that does not exist is exactly the
         # staleness this tool exists to prevent, so check before suggesting.
         pending = [("src/difficulty_curves.py", "Phase 8, rating sweep",
-                    "RUNBOOK.md L777"),
+                    "phase 8"),
                    ("src/validate_puzzles.py", "external validation on "
-                    "Lichess puzzles", "RUNBOOK.md L825"),
+                    "Lichess puzzles", "phase 9"),
                    ("src/build_site.py", "docs/index.html landing page",
-                    "RUNBOOK.md L992"),
+                    "phase 10"),
                    ("README.md", "the writeup", "pull numbers from FINDINGS")]
         missing = [x for x in pending if not os.path.exists(x[0])]
         if missing:
@@ -289,7 +289,7 @@ def main() -> int:
                      "Re-run any stage freely; every script is idempotent.")
 
     print("\n" + "-" * 74)
-    print("  full plan: RUNBOOK.md   |   this check: python src/status.py")
+    print("  invariants: SPEC.md   |   results: FINDINGS.md   |   this check: src/status.py")
     print("  rerun any completed step freely; every script is idempotent")
     print("-" * 74)
     return 0

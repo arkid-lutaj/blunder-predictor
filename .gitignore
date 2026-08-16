@@ -29,3 +29,6 @@ temporary files/
 # Stale duplicates of reports/report_*.txt, left at the root by an early run.
 /report_blitz.txt
 /report_rapid.txt
+
+# Personal build plan, not part of the public repo
+RUNBOOK.md
