@@ -1,0 +1,78 @@
+model full_free_noclock (engine_free, 48 features)
+
+6,100,960 puzzles in file
+  RatingDeviation < 80   6,100,960 -> 3,271,644
+  NbPlays > 200          3,271,644 -> 2,500,155
+  drop mate themes             2,500,155 -> 1,902,527
+  Mate puzzles are excluded because forced-mate evals are exactly
+  what label_valid=False marks in training. Same rule, same reason.
+
+sampled 20,000 puzzles  (rating 641-2693, median 1604)
+
+building features from FEN (no engine needed for this model) ...
+  20,000 feature rows
+
+sweeping rating 600-2600 in 25-point steps, all four rating features moving together ...
+
+censored (curve never crosses 10% in range): 3,969 of 20,000 (19.8%)
+  their mean puzzle rating 1587 against 1623 for the uncensored
+  Reported, not dropped: censored positions are systematically
+  the easy ones, so discarding them would bias the correlation.
+
+======================================================================
+HEADLINE: model difficulty (D10) vs human puzzle rating
+======================================================================
+  n = 16,031 uncensored puzzles
+  Spearman rho = +0.1126
+  Pearson  r   = +0.1134
+  D10 range 652-2598, median 1531
+
+by theme (a global correlation can hide a single dominant theme):
+  theme             n      spearman
+  ----------------  -----  --------
+  fork              2,781  +0.1387 
+  pin               1,236  +0.1868 
+  hangingPiece      650    +0.0509 
+  deflection        1,006  +0.1121 
+  skewer            476    +0.1625 
+  discoveredAttack  1,200  +0.1497 
+  endgame           7,349  +0.0971 
+  middlegame        7,884  +0.1303 
+  opening           798    +0.0913 
+
+mean predicted P(blunder) at a fixed 1500 rating, by puzzle-rating
+decile. Should rise monotonically if the model tracks difficulty:
+
+  decile        n  mean rating    P@1500  mean D10
+  0         1,613         1039    10.50%      1464
+  1         1,598         1242    10.54%      1474
+  2         1,608         1371    10.64%      1493
+  3         1,610         1474    10.94%      1519
+  4         1,605         1567    11.18%      1544
+  5         1,585         1655    11.21%      1543
+  6         1,613         1756    11.64%      1592
+  7         1,598         1878    11.46%      1573
+  8         1,603         2010    11.99%      1627
+  9         1,598         2241    12.26%      1650
+
+  monotone up-steps 8 of 9
+
+wrote figures/puzzle_validation.png
+
+======================================================================
+CAVEAT, and why it does not sink the result
+======================================================================
+  Puzzles are SELECTED so a blunder exists and the best move is
+  unique. They are therefore a biased sample of positions, and this
+  is not a claim about all chess positions.
+
+  But the bias runs in a useful direction. Conditioning on 'a mistake
+  is on offer here' is close to the regime the Phase 7 SELECTION term
+  describes, and Phase 7 found selection carries ~100% of the rating
+  effect while availability carries none. So this correlation is
+  evidence about the selection channel specifically, which is exactly
+  the channel that mattered.
+
+  It is still external: the puzzle rating comes from human solve
+  attempts on lichess.org, not from this dump, this label or these
+  features.

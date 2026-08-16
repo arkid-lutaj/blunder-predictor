@@ -36,6 +36,8 @@ import lightgbm as lgb
 import numpy as np
 import pandas as pd
 
+from build_features import rating_grid
+
 RATINGS = list(range(800, 2451, 50))
 
 
@@ -129,7 +131,6 @@ def main() -> int:
         min(len(kids), args.n * 3), random_state=args.seed)
 
     out_positions = []
-    elo_idx = feat_names.index("mover_elo")
 
     for row in pool.itertuples():
         if len(out_positions) >= args.n:
@@ -144,9 +145,10 @@ def main() -> int:
             continue
         base = frow[feat_names].to_numpy(dtype=np.float32)[0]
 
-        grid = np.repeat(base[None, :], len(RATINGS), axis=0)
-        grid[:, elo_idx] = RATINGS
-        curve = iso(booster.predict(grid))
+        # NOT a bare mover_elo sweep: opp_elo, mean_elo and elo_gap have to
+        # move with it or the curve describes a 2400 playing a 900. See the
+        # docstring on rating_grid.
+        curve = iso(booster.predict(rating_grid(base, feat_names, RATINGS)))
 
         svg = chess.svg.board(board, size=360,
                               orientation=board.turn, coordinates=True)

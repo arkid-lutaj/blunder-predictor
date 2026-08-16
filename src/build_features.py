@@ -212,6 +212,48 @@ def context_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
+# Rating sweeps
+# ---------------------------------------------------------------------------
+
+
+RATING_FEATURES = ("mover_elo", "opp_elo", "mean_elo", "elo_gap")
+
+
+def rating_grid(base, feat_names, ratings):
+    """Replicate one feature row across a range of ratings.
+
+    MOVES ALL FOUR RATING FEATURES TOGETHER. This is the whole point of the
+    function and the reason it exists rather than being written inline.
+
+    mean_elo = (mover_elo + opp_elo) / 2 and elo_gap = mover_elo - opp_elo, so
+    the four are algebraically linked. Sweeping mover_elo alone and leaving the
+    other three at the values of whichever position supplied the base row asks
+    the model about a 2400 playing a 900 while their mean rating is 1650 --
+    incoherent, absent from training data, and not the question a rating sweep
+    is meant to answer.
+
+    Setting opp_elo = mean_elo = R and elo_gap = 0 asks the question that was
+    intended: a player of rating R against a peer.
+
+    Any rating feature the model does not carry is skipped, so this is safe on
+    reduced feature sets.
+    """
+    ratings = np.asarray(ratings, dtype=np.float32)
+    grid = np.repeat(np.asarray(base, dtype=np.float32)[None, :],
+                     len(ratings), axis=0)
+    idx = {n: feat_names.index(n) for n in RATING_FEATURES if n in feat_names}
+    if "mover_elo" not in idx:
+        raise ValueError("model has no mover_elo feature; a rating sweep is "
+                         "meaningless")
+    for name in ("mover_elo", "opp_elo", "mean_elo"):
+        if name in idx:
+            grid[:, idx[name]] = ratings
+    if "elo_gap" in idx:
+        grid[:, idx["elo_gap"]] = 0.0
+    return grid
+
+
+# ---------------------------------------------------------------------------
 
 
 def main() -> int:

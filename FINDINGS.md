@@ -254,9 +254,43 @@ mover_elo to 2400 while mean_elo stays at 1650 asks the model about a 2400
 playing a 900 — not a position that exists in training, and not the question
 intended.
 
-Fixed: `rating_grid()` now sets `opp_elo = mean_elo = R` and `elo_gap = 0`, so
-the sweep answers "a player of rating R against a peer". **The same fix is
-required in `difficulty_curves.py` (Phase 8) and any SHAP rating analysis.**
+Fixed: `rating_grid()` sets `opp_elo = mean_elo = R` and `elo_gap = 0`, so the
+sweep answers "a player of rating R against a peer". **The same fix is required
+in `difficulty_curves.py` (Phase 8) and any SHAP rating analysis.**
+
+**Correction, found later.** The paragraph above was written when the fix was
+designed, not when it landed. `rating_grid()` did not exist anywhere in `src/`;
+`build_challenge.py` was still doing `grid[:, elo_idx] = RATINGS`, a bare
+`mover_elo` sweep, and the first `docs/challenge.json` was generated and
+committed with wrong curves. A documented fix is not a shipped fix, and this
+file recorded the intent as though it were the outcome.
+
+Now genuinely fixed: `rating_grid()` lives in `build_features.py`, is imported
+by `build_challenge.py` and `validate_puzzles.py`, raises if the model has no
+`mover_elo`, and skips whichever of the four rating features a reduced feature
+set omits. `challenge.json` was regenerated against it.
+
+Worth noting how it was caught: writing a SECOND consumer of the same sweep
+forced a look at the first. A fix with one caller is easy to believe in.
+
+**The bug was material, not cosmetic.** Comparing the 60 committed challenge
+curves before and after, median absolute change **0.0297** and max **0.1320**.
+A representative position:
+
+| rating | 800 | 1200 | 1600 | 2000 | 2400 |
+|---|---|---|---|---|---|
+| bare mover_elo sweep | 7.64% | 6.39% | 5.71% | 5.71% | 4.62% |
+| all four together | **15.17%** | **11.74%** | 7.64% | 5.71% | **3.63%** |
+
+The broken sweep spans **1.65x** from 800 to 2400; the correct one spans
+**4.2x**. Holding `mean_elo` at the position's actual value while moving
+`mover_elo` feeds the model a contradiction, and the rating signal gets diluted
+across the four collinear features — the same collinearity documented above
+under feature importance, biting in a second place.
+
+So the challenge game was showing a badly flattened rating curve, which is
+precisely the thing it exists to demonstrate. Any figure or demo built on a
+rating sweep must be regenerated after this fix, not just re-read.
 
 ## The leakage number needs a proper experiment
 
@@ -335,10 +369,9 @@ undiminished after controlling for time pressure.** The full month supports the
 strong form better than the week sample did.
 
 Note the with-clock full-month numbers (+0.0496 / +0.1238) are slightly above
-the week-sample ones (+0.0473 / +0.1209) quoted elsewhere in this file. That is
-the data-volume effect, not a change in method; the headline evaluation tables
-above are still week-sample and should be regenerated from the full month
-before the README quotes them.
+the week-sample ones (+0.0473 / +0.1209). That is the data-volume effect, not a
+change in method. The headline evaluation tables have since been regenerated
+from the full month and are the ones to quote.
 
 ## Leakage (Phase 3): a measured NULL result
 
@@ -366,58 +399,84 @@ A null result you went looking for is stronger evidence of care than a
 convenient positive one.
 
 
-## Evaluation results (one-week sample) -- the headline set
+## Evaluation results (FULL MONTH) -- the headline set
 
-Test 318,697 rows, base rate 3.885%. Eligible rows 87.5%, base rate 4.438%,
-containing 0 impossible positives as required.
+**These are the numbers the README quotes.** Test 1,257,458 rows, base rate
+3.9086%. Eligible rows 87.9%, base rate 4.4485%, containing 0 impossible
+positives as required.
 
 | model | Brier skill (all) | Brier skill (eligible) | PR-AUC | PR lift | ROC-AUC | ECE |
 |---|---|---|---|---|---|---|
-| B0 constant | +0.0000 | +0.0000 | 0.0388 | 1.00x | 0.500 | - |
-| B1 rating only | +0.0039 | - | 0.0533 | 1.37x | 0.589 | 0.0017 |
-| engine_free | +0.0473 | +0.0488 | 0.1201 | 3.09x | 0.788 | 0.0017 |
-| engine_free, no clock | +0.0463 | +0.0476 | 0.1176 | 3.03x | 0.786 | 0.0016 |
-| engine_assisted | **+0.1209** | **+0.1161** | 0.2315 | 5.96x | 0.869 | 0.0014 |
-| engine_assisted, no clock | +0.1191 | +0.1143 | 0.2282 | 5.87x | 0.868 | 0.0015 |
+| B0 constant | +0.0000 | +0.0000 | 0.0391 | 1.00x | 0.500 | - |
+| B1 rating only | +0.0037 | - | 0.0536 | 1.37x | 0.587 | 0.0012 |
+| B2 hand-picked | +0.0142 | - | 0.0752 | 1.92x | 0.720 | 0.0116 |
+| engine_free | +0.0496 | +0.0520 | 0.1258 | 3.22x | 0.792 | 0.0012 |
+| engine_free, no clock | +0.0489 | +0.0512 | 0.1247 | 3.19x | 0.791 | 0.0011 |
+| engine_assisted | **+0.1238** | **+0.1194** | 0.2389 | 6.11x | 0.871 | 0.0010 |
+| engine_assisted, no clock | +0.1241 | +0.1196 | 0.2389 | 6.11x | 0.871 | 0.0010 |
+
+engine_free beats rating-only by **13.4x** on Brier skill (+0.0496 / +0.0037).
+
+The one-week numbers this table replaced were +0.0473 / +0.1209 all-rows. Every
+figure moved slightly UP with 4x the data and none changed direction, which is
+the same stability the base rate showed (3.984% -> 3.952%).
 
 ### Calibration holds WITHIN rating bands
 
-| band | rows | observed | predicted (assisted) | ECE |
-|---|---|---|---|---|
-| <1200 | 43,880 | 6.05% | 6.12% | 0.0032 |
-| 1200-1600 | 85,087 | 4.43% | 4.38% | 0.0022 |
-| 1600-2000 | 98,392 | 3.71% | 3.62% | 0.0024 |
-| 2000+ | 91,338 | 2.53% | 2.54% | 0.0010 |
+Full month, engine_assisted, on 1,257,458 test rows:
 
-This is the result the whole project rests on. Aggregate calibration can be
-correct by accident — over-predicting weak players cancelling under-predicting
-strong ones. It is not happening here, so **"a 1400 blunders here 23% of the
-time" is a defensible sentence**, which is the product.
+| band | rows | observed | predicted | ECE |
+|---|---|---|---|---|
+| <1200 | 172,939 | 5.94% | 6.11% | 0.0027 |
+| 1200-1600 | 352,209 | 4.52% | 4.62% | 0.0015 |
+| 1600-2000 | 385,198 | 3.66% | 3.65% | 0.0009 |
+| 2000+ | 347,112 | 2.54% | 2.56% | 0.0011 |
+
+This is the result the whole project rests on, and it now stands on 4x the
+rows: each band alone is larger than the entire one-week test set. Aggregate
+calibration can be correct by accident — over-predicting weak players
+cancelling under-predicting strong ones. It is not happening here, so **"a 1400
+blunders here 23% of the time" is a defensible sentence**, which is the
+product.
+
+Worst band ECE is 0.0027, in the <1200 band, where the model over-predicts by
+0.17pp. That is the direction to expect given the selection bias in the
+annotated subset (blitz median Elo +135 above the pool), so the model has seen
+fewer weak players than the pool contains.
 
 ### What the engine buys, honestly
 
 | comparison | engine_free -> engine_assisted |
 |---|---|
-| all rows | +0.0473 -> +0.1209 (**2.55x**) |
-| eligible rows only | +0.0488 -> +0.1161 (**2.38x**) |
+| all rows | +0.0496 -> +0.1238 (**2.49x**) |
+| eligible rows only | +0.0520 -> +0.1194 (**2.30x**) |
 
-Quote the eligible-only figure. The gap between 2.55x and 2.38x is the
+Quote the eligible-only figure. The gap between 2.49x and 2.30x is the
 structural-floor freebie, and it is small: the engine advantage is real, not an
-artefact of knowing where the label cannot fire.
+artefact of knowing where the label cannot fire. Week sample gave 2.55x / 2.38x,
+so this is stable.
 
 ### The honest ceiling
 
-Top predicted decile: 14.3% observed against a 3.9% base rate for engine_free,
-20.8% for engine_assisted. So the model identifies positions roughly 3.6x to
-5.4x more dangerous than average. That is a useful **difficulty signal, not a
-blunder detector**, and the README should say so plainly. PR-AUC of 0.12 / 0.23
-against a 0.039 baseline is the same fact stated differently.
+Top predicted decile: **13.86% observed against a 3.91% base rate** for
+engine_free (**3.5x**), **21.06%** for engine_assisted (**5.4x**). So the model
+identifies positions roughly 3.5x to 5.4x more dangerous than average. That is
+a useful **difficulty signal, not a blunder detector**, and the README should
+say so plainly. PR-AUC of 0.126 / 0.239 against a 0.039 baseline is the same
+fact stated differently.
 
-Deciles are monotone in observed frequency for every model, and the
-predicted/observed ratio stays within about 1.05 across the middle deciles. The
-noisy ratios in decile 0 (up to 4.4x) are on predicted probabilities near
-0.0001, where a handful of events moves the ratio and the absolute error is
-negligible.
+Deciles are monotone in observed frequency for every model and the
+predicted/observed ratio stays within about 1.04 across the middle deciles. Two
+presentation notes:
+
+- Decile 0 ratios (0.55 to 0.79) are on predicted probabilities near 0.0001,
+  where a handful of events moves the ratio and the absolute error is
+  negligible. Do not quote them.
+- **The engine_assisted models show 9 deciles, not 10.** Its predictions pile
+  up so tightly near zero that two decile edges coincide and `qcut` merges
+  them, leaving a 278,635-row bottom bin. Not a bug — a consequence of a
+  sharper model on a 3.9% base rate — but the table must not be presented as
+  if a decile went missing.
 
 ## Windows / Git Bash gotchas
 
@@ -711,6 +770,82 @@ on `winpct_before` from Lichess' deep annotation, while this floor is on
 `best_child_win` from our depth-8 sweep measured against the best child. Two
 different quantities, so a handful disagree. The report prints the rate and
 warns above 1%.
+
+## Phase 9: external validation on puzzles — POSITIVE BUT WEAK
+
+The one check that uses a difficulty scale measured outside this dump.
+20,000 puzzles sampled from 1,902,527 surviving filters (RatingDeviation < 80,
+NbPlays > 200, mate themes dropped) out of 6,100,960 published.
+
+Model difficulty is **D10**: the rating at which predicted P(blunder) crosses
+10%, so the model lands on the Elo scale and can be correlated with the
+puzzle's own Elo directly.
+
+| quantity | value |
+|---|---|
+| uncensored puzzles | 16,031 |
+| censored (never crosses 10%) | 3,969 (**19.8%**) |
+| **Spearman rho** | **+0.1126** |
+| Pearson r | +0.1134 |
+| decile monotone up-steps | 8 of 9 |
+
+**This does not meet the acceptance bar.** RUNBOOK Phase 9 called for 0.4-0.6
+as a strong result. We got +0.11. At n=16,031 the standard error is ~0.008, so
+the correlation is ~14 se from zero — **definitively positive and definitively
+small**. Report it that way; do not round it up into a success.
+
+Every theme is positive, so it is not one group carrying a spurious average:
+
+| theme | n | rho | | theme | n | rho |
+|---|---:|---:|---|---|---:|---:|
+| pin | 1,236 | +0.187 | | fork | 2,781 | +0.139 |
+| skewer | 476 | +0.163 | | middlegame | 7,884 | +0.130 |
+| discoveredAttack | 1,200 | +0.150 | | deflection | 1,006 | +0.112 |
+| endgame | 7,349 | +0.097 | | opening | 798 | +0.091 |
+| hangingPiece | 650 | +0.051 | | | | |
+
+### The compression is the real story
+
+Mean D10 by puzzle-rating decile rises **1464 -> 1650**, i.e. **186 Elo**, while
+the puzzle rating underneath it rises **1039 -> 2241**, i.e. **1202 Elo**. The
+model's difficulty scale responds about **6x too weakly**. The ordering is
+almost perfect (8 of 9 up-steps) but the magnitude is badly compressed.
+
+So the honest sentence is: **the model ranks human difficulty in the right
+order and dramatically understates its range.**
+
+### Why, and which explanations are testable
+
+1. **Puzzle selection removes the variance the model is good at.** Every puzzle
+   has a blunder available and a unique best move. Much of the model's skill is
+   separating dangerous positions from safe ones, and that axis is constant by
+   construction here. This is the leading explanation and it is consistent with
+   Phase 7: the availability channel is exactly what puzzle selection holds
+   fixed, so what remains is the selection channel alone.
+2. **Different tasks.** A puzzle rating measures "can you FIND the one best
+   move". Our label measures "do you give away 20 win%". Related, not the same.
+3. **No engine features.** Tactical depth is what makes puzzles hard, and the
+   engine_free model never sees an eval.
+
+Explanation 3 is the obvious next test and **it is not currently runnable**.
+`full_assisted` needs `winpct_momentum_2`, `winpct_momentum_4` and
+`prev_own_move_was_blunder`, all of which require the GAME HISTORY a standalone
+puzzle does not have; `full_assisted_noclock` needs them too. Testing it would
+mean training a static-assisted feature set (eval features, no history), which
+is a new model, not a new script. Worth doing, but say plainly that the
+assisted arm of Phase 9 has not been run rather than implying it was.
+
+### Why the engine_free NO-CLOCK model is the right one here
+
+A puzzle has no clock, no time control and no opponent. `full_free_noclock`'s
+only clock-like feature is `halfmove_clock`, a FEN field, so it is **exactly**
+computable on a puzzle with nothing imputed and no engine call. The clock
+ablation put the cost of that substitution at 1.4% of Brier skill. Using
+`full_free` instead would have meant inventing six clock features carrying ~9%
+of the model's gain, so the ablation is what made this phase clean.
+
+`validate_puzzles.py` refuses to run on a model carrying clock features rather
+than silently imputing them.
 
 ### The caveat that has to travel with the headline
 
