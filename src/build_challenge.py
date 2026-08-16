@@ -36,7 +36,7 @@ import lightgbm as lgb
 import numpy as np
 import pandas as pd
 
-from build_features import rating_grid
+from build_features import check_sweep_span, rating_grid
 
 RATINGS = list(range(800, 2451, 50))
 
@@ -166,6 +166,15 @@ def main() -> int:
     if not out_positions:
         print("FATAL: no usable positions. Did eval_children run with --per-move?")
         return 1
+
+    # The rating curve IS the product here -- the page's whole claim is "a 1500
+    # blunders here X% of the time". A flattened sweep ships a demo that
+    # understates the effect it exists to show, and it did once. Refuse to
+    # write the file rather than warn.
+    span = check_sweep_span([p["curve"] for p in out_positions],
+                            "challenge rating sweep")
+    print(f"sweep span check: median {span:.2f}x across {RATINGS[0]}-"
+          f"{RATINGS[-1]} Elo")
 
     payload = {"ratings": RATINGS, "positions": out_positions,
                "model": os.path.basename(args.model),

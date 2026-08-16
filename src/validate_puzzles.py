@@ -61,7 +61,7 @@ import lightgbm as lgb
 import numpy as np
 import pandas as pd
 
-from build_features import position_features, rating_grid
+from build_features import check_sweep_span, position_features, rating_grid
 
 # The sweep. Wide enough to bracket the whole Lichess range; 25-point steps
 # because D10 is interpolated between grid points, so finer buys nothing.
@@ -278,11 +278,21 @@ def main() -> int:
     # rows -- large enough to amortise the call overhead, small enough that
     # the stacked grid stays trivial in memory.
     CHUNK = 400
+    span = None
     for s in range(0, len(X), CHUNK):
         block = X[s:s + CHUNK]
         grids = np.concatenate(
             [rating_grid(row, feat_names, RATINGS) for row in block])
         preds = iso(booster.predict(grids)).reshape(len(block), len(RATINGS))
+        if span is None:
+            # D10 is defined entirely by this curve, so a flattened sweep would
+            # compress D10 and attenuate the correlation -- producing exactly
+            # the weak-but-positive result this script is meant to measure.
+            # Gate on the first chunk so a bad run dies in seconds, not after
+            # the full sweep.
+            span = check_sweep_span(preds, "puzzle rating sweep")
+            say(f"  sweep span check: median {span:.2f}x across the rating "
+                f"range (gate {check_sweep_span.__defaults__[0]:.1f}x)")
         for j in range(len(block)):
             d10s[s + j] = d10(preds[j], RATINGS)
             p1500[s + j] = preds[j][i1500]

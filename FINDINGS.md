@@ -292,6 +292,33 @@ So the challenge game was showing a badly flattened rating curve, which is
 precisely the thing it exists to demonstrate. Any figure or demo built on a
 rating sweep must be regenerated after this fix, not just re-read.
 
+### The process rule this earns
+
+**A fix is not recorded as done until something executes the fixed path.**
+Documentation claiming a fix is worse than a known-open bug: an open bug is
+still being looked for, while a false record stops the search. This one
+survived precisely because nothing ever ran the code the note described.
+
+**Distrust single-caller fixes.** A helper with one consumer is never
+cross-checked; the bug was caught only when a second consumer forced a reading
+of the first.
+
+Both are now enforced mechanically rather than by intention:
+
+- `python src/build_features.py --self-test` checks `rating_grid` moves
+  `mover_elo`, `opp_elo` and `mean_elo` together, holds `elo_gap` at 0, leaves
+  non-rating features alone, tolerates reduced feature sets, and raises when
+  `mover_elo` is absent.
+- `check_sweep_span()` gates both consumers on the OUTPUT: it kills the run if
+  the median curve span falls below **3.0x**. Measured separation on 400 real
+  positions — correct sweep median 6.28x (p10 3.26x), broken 1.83x (p10 1.42x).
+  Verified to fire by feeding it the broken sweep.
+
+Note the gate is on the MEDIAN across many curves, not per curve. The correct
+sweep's own minimum is 1.66x, because genuinely flat positions exist, so a
+per-curve 2x threshold would fail on valid data. Live values: challenge
+**13.53x**, puzzles **6.63x**, both far clear of the gate.
+
 ## The leakage number needs a proper experiment
 
 The `calibrated (game-hash test)` row in `train.py` output is NOT a clean
@@ -803,6 +830,32 @@ Every theme is positive, so it is not one group carrying a spurious average:
 | discoveredAttack | 1,200 | +0.150 | | deflection | 1,006 | +0.112 |
 | endgame | 7,349 | +0.097 | | opening | 798 | +0.091 |
 | hangingPiece | 650 | +0.051 | | | | |
+
+### Contamination check: was this measuring the rating-sweep bug?
+
+D10 is computed entirely from the rating sweep, so a flattened sweep would
+compress D10 and attenuate the correlation — producing exactly the
+weak-but-positive result observed. The bug was found in the same session, so
+this had to be ruled out before the availability story could be believed.
+
+**It was not contaminated.** `validate_puzzles.py` imported `rating_grid` from
+the moment it was written (16:42 fix, 16:46 script, 16:50 run), but file order
+is weak evidence. The decisive check re-ran the correlation both ways on the
+same 6,000 puzzles:
+
+| sweep | censored | Spearman |
+|---|---|---|
+| correct (`rating_grid`) | **19.8%** | **+0.1250** |
+| broken (`mover_elo` alone) | 59.9% | +0.0931 |
+
+**The censoring rate is the fingerprint.** The real run reported 19.8%, which
+matches the correct sweep exactly and is nowhere near 59.9%. Censoring is a
+property of the curve shape that no bookkeeping error could fake.
+
+The mechanism was real, though: the bug attenuates the correlation by ~25%
+(+0.1250 -> +0.0931) and more than triples censoring. It simply was not what
+happened here. Worth recording because the reasoning was correct and would have
+been decisive under slightly different timing.
 
 ### The compression is the real story
 

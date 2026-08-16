@@ -253,17 +253,114 @@ def rating_grid(base, feat_names, ratings):
     return grid
 
 
+# A rating sweep that moves all four features produces a curve spanning
+# several-fold from the weakest to the strongest rating. A bare mover_elo sweep
+# cannot: the other three rating features contradict it and the signal is
+# diluted. Measured on 400 real positions with the engine_free no-clock model:
+#
+#     correct   median 6.28x   p10 3.26x   min 1.66x
+#     broken    median 1.83x   p10 1.42x   min 1.12x
+#
+# So the gate is on the MEDIAN across many curves, not on each curve. A
+# per-curve threshold of 2x would fire on genuinely flat positions, which
+# exist -- the correct sweep's own minimum is 1.66x. The median separates the
+# two regimes with a wide margin either side.
+MIN_MEDIAN_SWEEP_SPAN = 3.0
+
+
+def check_sweep_span(curves, where: str, threshold: float = MIN_MEDIAN_SWEEP_SPAN):
+    """Fail loudly if a batch of rating curves is too flat to be a real sweep.
+
+    This exists because the bare-mover_elo bug was documented as fixed while
+    the code still had it, and nothing executed the fixed path to notice. A
+    comment cannot catch that; an assertion on the output can.
+    """
+    c = np.asarray(curves, dtype=float)
+    if c.ndim != 2 or c.shape[0] == 0:
+        raise ValueError(f"{where}: expected a 2-D batch of curves")
+    lo = np.maximum(c.min(axis=1), 1e-12)
+    span = np.median(c.max(axis=1) / lo)
+    if span < threshold:
+        raise SystemExit(
+            f"FATAL: {where} produced rating curves with median span "
+            f"{span:.2f}x, below {threshold:.1f}x.\n"
+            f"That is the signature of sweeping mover_elo alone while opp_elo, "
+            f"mean_elo and\nelo_gap stay fixed. Use "
+            f"build_features.rating_grid, which moves all four.")
+    return float(span)
+
+
+def self_test_rating_grid() -> int:
+    """Check rating_grid moves the rating features together. No data needed."""
+    names = ["material_balance", "mover_elo", "opp_elo", "elo_gap", "mean_elo"]
+    base = np.array([3.0, 1234.0, 1600.0, -366.0, 1417.0], dtype=np.float32)
+    ratings = [800, 1500, 2200]
+    g = rating_grid(base, names, ratings)
+
+    fail = 0
+
+    def check(label, cond):
+        nonlocal fail
+        fail += not cond
+        print(f"  {'OK  ' if cond else 'FAIL'}  {label}")
+
+    for i, r in enumerate(ratings):
+        check(f"mover_elo = {r}", g[i, 1] == r)
+        check(f"opp_elo   = {r}  (not left at 1600)", g[i, 2] == r)
+        check(f"mean_elo  = {r}  (not left at 1417)", g[i, 4] == r)
+        check(f"elo_gap   = 0    (not left at -366)", g[i, 3] == 0)
+    check("non-rating features untouched",
+          bool((g[:, 0] == base[0]).all()))
+
+    # reduced feature sets must not raise
+    small = ["material_balance", "mover_elo"]
+    gs = rating_grid(np.array([3.0, 1234.0], dtype=np.float32), small, ratings)
+    check("works when only mover_elo is present",
+          bool((gs[:, 1] == np.asarray(ratings, dtype=np.float32)).all()))
+
+    try:
+        rating_grid(np.array([3.0], dtype=np.float32), ["material_balance"],
+                    ratings)
+        check("raises when mover_elo is absent", False)
+    except ValueError:
+        check("raises when mover_elo is absent", True)
+
+    # the span gate must reject a flat batch and accept a spread one
+    flat = np.tile(np.array([0.05, 0.048, 0.046]), (20, 1))
+    try:
+        check_sweep_span(flat, "self-test")
+        check("check_sweep_span rejects a flat batch", False)
+    except SystemExit:
+        check("check_sweep_span rejects a flat batch", True)
+    wide = np.tile(np.array([0.15, 0.07, 0.03]), (20, 1))
+    try:
+        check_sweep_span(wide, "self-test")
+        check("check_sweep_span accepts a real sweep", True)
+    except SystemExit:
+        check("check_sweep_span accepts a real sweep", False)
+
+    print(f"\n{'rating_grid OK' if not fail else f'{fail} FAILED'}")
+    return 1 if fail else 0
+
+
 # ---------------------------------------------------------------------------
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data", required=True)
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--data")
+    ap.add_argument("--out")
+    ap.add_argument("--self-test", action="store_true",
+                    help="check rating_grid and the sweep-span gate, no data")
     ap.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 1))
     ap.add_argument("--chunk-size", type=int, default=20_000)
     ap.add_argument("--limit", type=int, default=None)
     args = ap.parse_args()
+
+    if args.self_test:
+        return self_test_rating_grid()
+    if not args.data or not args.out:
+        ap.error("--data and --out are required (or use --self-test)")
 
     df = pd.read_parquet(args.data)
     if args.limit:

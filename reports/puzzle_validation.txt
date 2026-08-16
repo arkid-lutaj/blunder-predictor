@@ -7,57 +7,50 @@ model full_free_noclock (engine_free, 48 features)
   Mate puzzles are excluded because forced-mate evals are exactly
   what label_valid=False marks in training. Same rule, same reason.
 
-sampled 20,000 puzzles  (rating 641-2693, median 1604)
+sampled 500 puzzles  (rating 832-2541, median 1606)
 
 building features from FEN (no engine needed for this model) ...
-  20,000 feature rows
+  500 feature rows
 
 sweeping rating 600-2600 in 25-point steps, all four rating features moving together ...
+  sweep span check: median 6.63x across the rating range (gate 3.0x)
 
-censored (curve never crosses 10% in range): 3,969 of 20,000 (19.8%)
-  their mean puzzle rating 1587 against 1623 for the uncensored
+censored (curve never crosses 10% in range): 106 of 500 (21.2%)
+  their mean puzzle rating 1571 against 1630 for the uncensored
   Reported, not dropped: censored positions are systematically
   the easy ones, so discarding them would bias the correlation.
 
 ======================================================================
 HEADLINE: model difficulty (D10) vs human puzzle rating
 ======================================================================
-  n = 16,031 uncensored puzzles
-  Spearman rho = +0.1126
-  Pearson  r   = +0.1134
-  D10 range 652-2598, median 1531
+  n = 394 uncensored puzzles
+  Spearman rho = +0.1044
+  Pearson  r   = +0.1140
+  D10 range 656-2596, median 1545
 
 by theme (a global correlation can hide a single dominant theme):
-  theme             n      spearman
-  ----------------  -----  --------
-  fork              2,781  +0.1387 
-  pin               1,236  +0.1868 
-  hangingPiece      650    +0.0509 
-  deflection        1,006  +0.1121 
-  skewer            476    +0.1625 
-  discoveredAttack  1,200  +0.1497 
-  endgame           7,349  +0.0971 
-  middlegame        7,884  +0.1303 
-  opening           798    +0.0913 
+  theme       n    spearman
+  ----------  ---  --------
+  middlegame  203  +0.1270 
 
 mean predicted P(blunder) at a fixed 1500 rating, by puzzle-rating
 decile. Should rise monotonically if the model tracks difficulty:
 
   decile        n  mean rating    P@1500  mean D10
-  0         1,613         1039    10.50%      1464
-  1         1,598         1242    10.54%      1474
-  2         1,608         1371    10.64%      1493
-  3         1,610         1474    10.94%      1519
-  4         1,605         1567    11.18%      1544
-  5         1,585         1655    11.21%      1543
-  6         1,613         1756    11.64%      1592
-  7         1,598         1878    11.46%      1573
-  8         1,603         2010    11.99%      1627
-  9         1,598         2241    12.26%      1650
+  0            40         1091    11.04%      1523
+  1            40         1252    10.75%      1473
+  2            38         1369    11.08%      1509
+  3            40         1466    10.40%      1493
+  4            39         1575    11.60%      1570
+  5            40         1665    10.65%      1499
+  6            39         1764    12.40%      1603
+  7            39         1885    11.08%      1525
+  8            39         2000    11.80%      1592
+  9            40         2236    13.17%      1744
 
-  monotone up-steps 8 of 9
+  monotone up-steps 5 of 9
 
-wrote figures/puzzle_validation.png
+wrote \puzzle_validation.png
 
 ======================================================================
 CAVEAT, and why it does not sink the result
