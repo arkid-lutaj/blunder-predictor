@@ -1,158 +1,280 @@
 <!doctype html>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Blunder Challenge</title>
 <style>
-  :root { --bg:#12141a; --fg:#e8e8ea; --dim:#8b8f9a; --acc:#6ea8fe;
-          --bad:#f2777a; --good:#7ec699; --card:#1b1e26; }
-  * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.55
-         ui-sans-serif,system-ui,-apple-system,sans-serif; }
-  .wrap { max-width:860px; margin:0 auto; padding:24px 18px 80px; }
-  h1 { font-size:22px; margin:0 0 4px; letter-spacing:-.01em; }
-  .sub { color:var(--dim); font-size:13px; margin-bottom:22px; }
-  .card { background:var(--card); border:1px solid #262a34; border-radius:12px;
-          padding:18px; margin-bottom:16px; }
-  .board { display:flex; justify-content:center; margin-bottom:14px; }
-  .board svg { max-width:100%; height:auto; border-radius:6px; }
-  .moves { display:flex; flex-wrap:wrap; gap:8px; }
-  button.mv { font:600 15px ui-monospace,SFMono-Regular,Menlo,monospace;
-        background:#232735; color:var(--fg); border:1px solid #333949;
-        border-radius:8px; padding:10px 16px; cursor:pointer; min-width:76px; }
-  button.mv:hover:not(:disabled) { border-color:var(--acc); }
-  button.mv:disabled { cursor:default; opacity:.95; }
-  .mv.pick-bad { background:#3a2226; border-color:var(--bad); color:#ffd9da; }
-  .mv.pick-good { background:#1e3227; border-color:var(--good); color:#d6f2e2; }
-  .mv.reveal-bad { border-color:#5a3237; }
-  .row { display:flex; justify-content:space-between; align-items:baseline;
-         gap:12px; flex-wrap:wrap; }
-  .num { font:600 28px ui-monospace,monospace; }
-  .dim { color:var(--dim); font-size:13px; }
-  input[type=range] { width:100%; accent-color:var(--acc); }
-  .verdict { margin-top:14px; padding:12px 14px; border-radius:8px;
-             background:#1f232d; font-size:14px; }
-  .bar { height:6px; background:#262a34; border-radius:3px; overflow:hidden;
-         margin-top:6px; }
-  .bar > i { display:block; height:100%; background:var(--acc); }
-  .ctr { text-align:center; }
-  svg.curve { width:100%; height:110px; }
+  :root{--bg:#12141a;--fg:#e8e8ea;--dim:#8b8f9a;--acc:#6ea8fe;--bad:#f2777a;
+        --good:#7ec699;--card:#1b1e26;--lt:#e9e2d0;--dk:#7d8a9e;--sel:#6ea8fe}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+       font:15px/1.55 ui-sans-serif,system-ui,-apple-system,sans-serif}
+  .wrap{max-width:900px;margin:0 auto;padding:22px 16px 70px}
+  h1{font-size:21px;margin:0 0 3px;letter-spacing:-.01em}
+  .sub{color:var(--dim);font-size:13px;margin-bottom:18px}
+  .card{background:var(--card);border:1px solid #262a34;border-radius:12px;
+        padding:16px;margin-bottom:14px}
+  .main{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+  .boardwrap{display:flex;gap:10px}
+  .side{flex:1;min-width:250px}
+  svg.board{width:min(74vw,392px);height:auto;touch-action:none;
+            border-radius:6px;user-select:none}
+  .evalbar{width:20px;height:min(74vw,392px);border-radius:5px;overflow:hidden;
+           background:#2b2f3a;position:relative;flex:none}
+  .evalbar i{position:absolute;left:0;right:0;bottom:0;background:#eee;
+             transition:height .45s cubic-bezier(.4,0,.2,1)}
+  .evalbar b{position:absolute;left:0;right:0;height:1px;background:var(--acc);
+             opacity:.85;transition:bottom .45s}
+  .row{display:flex;justify-content:space-between;align-items:baseline;
+       gap:10px;flex-wrap:wrap}
+  .num{font:600 26px ui-monospace,SFMono-Regular,Menlo,monospace}
+  .dim{color:var(--dim);font-size:13px}
+  input[type=range]{width:100%;accent-color:var(--acc)}
+  button{font:600 14px ui-sans-serif,system-ui,sans-serif;background:#232735;
+         color:var(--fg);border:1px solid #333949;border-radius:8px;
+         padding:9px 14px;cursor:pointer}
+  button:hover:not(:disabled){border-color:var(--acc)}
+  button:disabled{opacity:.4;cursor:default}
+  .verdict{margin-top:12px;padding:11px 13px;border-radius:8px;
+           background:#1f232d;font-size:14px;min-height:44px}
+  .tried{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
+  .tag{font:600 12px ui-monospace,monospace;padding:3px 8px;border-radius:6px;
+       background:#232735;border:1px solid #333949}
+  .tag.b{border-color:var(--bad);color:#ffd9da}
+  .tag.g{border-color:var(--good);color:#d6f2e2}
+  svg.curve{width:100%;height:88px}
+  .ctr{text-align:center;margin-top:6px}
+  .lgl{fill:var(--sel);opacity:.32}
+  .cap{fill:none;stroke:var(--sel);stroke-width:3.4;opacity:.55}
+  .from{fill:var(--sel);opacity:.30}
 </style>
 <div class="wrap">
   <h1>Blunder Challenge</h1>
   <div class="sub">Every legal move in these positions was evaluated by
-    Stockfish, so the page knows the truth about whatever you pick. The model
+    Stockfish, so the page knows the truth about whatever you play. The model
     never saw the answer &mdash; it only predicts how often a player of a given
-    rating blunders here.</div>
+    rating blunders here. Click a piece, then its destination. Promotions
+    auto-queen.</div>
 
   <div class="card">
     <label class="dim">Your rating: <b id="eloLabel">1500</b></label>
     <input type="range" id="elo" min="800" max="2450" step="50" value="1500">
-    <div class="row" style="margin-top:10px">
+    <div class="row" style="margin-top:8px">
       <div><span class="num" id="score">0</span><span class="dim"> / <span id="seen">0</span> clean</span></div>
-      <div class="dim ctr">model expected <b id="expected">0.0</b> blunders from you</div>
+      <div class="dim">model expected <b id="expected">0.0</b> blunders</div>
       <div class="dim">you played like <b id="implied">&mdash;</b></div>
     </div>
   </div>
 
-  <div class="card" id="posCard">
-    <div class="board" id="board"></div>
-    <div class="row" style="margin-bottom:10px">
-      <div class="dim"><b id="toMove">White</b> to move &mdash; pick a move</div>
-      <div class="dim" id="posMeta"></div>
+  <div class="card main">
+    <div class="boardwrap">
+      <div class="evalbar" title="win% for the side to move, who is always at the bottom of the board. The line marks what the position was worth before you moved."><i id="ev"></i><b id="evRef"></b></div>
+      <svg class="board" id="board" viewBox="0 0 360 360"></svg>
     </div>
-    <div class="moves" id="moves"></div>
-    <div class="verdict" id="verdict" style="display:none"></div>
-    <div id="curveBox" style="display:none;margin-top:14px">
-      <div class="dim">predicted blunder rate by rating</div>
-      <svg class="curve" id="curve" viewBox="0 0 600 110" preserveAspectRatio="none"></svg>
+    <div class="side">
+      <div class="row">
+        <div class="dim"><b id="toMove">White</b> to move</div>
+        <div class="dim" id="posMeta"></div>
+      </div>
+      <div class="verdict" id="verdict">Pick a move.</div>
+      <div class="tried" id="tried"></div>
+      <div class="row" style="margin-top:12px">
+        <button id="undo" disabled>&larr; Take back</button>
+        <button id="reveal">Show best</button>
+        <button id="next">Next &rarr;</button>
+      </div>
+      <div id="curveBox" style="display:none;margin-top:12px">
+        <div class="dim">predicted blunder rate by rating</div>
+        <svg class="curve" id="curve" viewBox="0 0 600 88" preserveAspectRatio="none"></svg>
+      </div>
     </div>
   </div>
-
-  <div class="ctr"><button class="mv" id="next">Next position &rarr;</button></div>
 </div>
 <script>
-let D=null, order=[], idx=0, seen=0, clean=0, expSum=0, answered=false;
-const $=id=>document.getElementById(id);
+const $=i=>document.getElementById(i);
+let D=null,order=[],idx=0,seen=0,clean=0,expSum=0;
+let pos=null,brd=null,flip=false,sel=null,scored=false,tried=[],shownPositions=[];
 
 fetch('challenge.json').then(r=>r.json()).then(d=>{
-  D=d; order=d.positions.map((_,i)=>i);
-  for(let i=order.length-1;i>0;i--){const j=(Math.random()*(i+1))|0;[order[i],order[j]]=[order[j],order[i]];}
+  D=d;
+  const sp=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  sp.setAttribute('style','position:absolute;width:0;height:0');
+  sp.innerHTML='<defs>'+d.sprite+'</defs>';
+  document.body.appendChild(sp);
+  order=d.positions.map((_,i)=>i);
+  for(let i=order.length-1;i>0;i--){const j=(Math.random()*(i+1))|0;
+    [order[i],order[j]]=[order[j],order[i]];}
   render();
 });
 
-function ratingIdx(){ return D.ratings.indexOf(+$('elo').value); }
-function pCur(p){ const i=ratingIdx(); return p.curve[i<0?0:i]; }
+/* ---------- FEN ---------- */
+function parseFEN(f){
+  const b=Array(64).fill(null), rows=f.split(' ')[0].split('/');
+  for(let r=0;r<8;r++){let c=0;
+    for(const ch of rows[r]){
+      if(/\d/.test(ch)) c+=+ch;
+      else b[(7-r)*8+c++]=ch;
+    }}
+  return b;
+}
+const NAME={k:'king',q:'queen',r:'rook',b:'bishop',n:'knight',p:'pawn'};
+const href=p=>'#'+(p===p.toUpperCase()?'white':'black')+'-'+NAME[p.toLowerCase()];
 
-$('elo').oninput=()=>{ $('eloLabel').textContent=$('elo').value;
-  if(D&&answered) drawCurve(D.positions[order[idx]]); };
-$('next').onclick=()=>{ idx=(idx+1)%order.length; render(); };
+/* ---------- board ---------- */
+function draw(){
+  const S=45,sq=[];
+  for(let i=0;i<64;i++){
+    const file=i%8, rank=(i/8)|0;
+    const x=(flip?7-file:file)*S, y=(flip?rank:7-rank)*S;
+    const light=(file+rank)%2===1;
+    sq.push(`<rect x="${x}" y="${y}" width="${S}" height="${S}" fill="${light?'var(--lt)':'var(--dk)'}"/>`);
+  }
+  let mk='',pc='';
+  if(sel!==null){
+    const [x,y]=xy(sel,S);
+    mk+=`<rect class="from" x="${x}" y="${y}" width="${S}" height="${S}"/>`;
+    for(const m of legalFrom(sel)){
+      const t=sqIdx(m.u.slice(2,4)), [tx,ty]=xy(t,S);
+      mk+= brd[t]
+        ? `<circle class="cap" cx="${tx+S/2}" cy="${ty+S/2}" r="${S/2-3}"/>`
+        : `<circle class="lgl" cx="${tx+S/2}" cy="${ty+S/2}" r="7"/>`;
+    }
+  }
+  for(let i=0;i<64;i++){
+    if(!brd[i]) continue;
+    const [x,y]=xy(i,S);
+    pc+=`<g transform="translate(${x},${y}) scale(${S/45})" data-sq="${i}"
+          style="cursor:${scored?'default':'grab'}"><use href="${href(brd[i])}"/></g>`;
+  }
+  $('board').innerHTML=sq.join('')+mk+pc;
+}
+function xy(i,S){const f=i%8,r=(i/8)|0;return [(flip?7-f:f)*S,(flip?r:7-r)*S];}
+function sqIdx(s){return (s.charCodeAt(1)-49)*8+(s.charCodeAt(0)-97);}
+function sqName(i){return String.fromCharCode(97+i%8)+String.fromCharCode(49+((i/8)|0));}
+function legalFrom(i){const n=sqName(i);return pos.moves.filter(m=>m.u.slice(0,2)===n);}
 
-function render(){
-  answered=false;
-  const p=D.positions[order[idx]];
-  $('board').innerHTML=p.svg;
-  $('toMove').textContent=p.to_move;
-  $('posMeta').textContent=p.n_moves+' legal moves';
-  $('verdict').style.display='none';
-  $('curveBox').style.display='none';
-  const box=$('moves'); box.innerHTML='';
-  p.candidates.forEach(c=>{
-    const b=document.createElement('button');
-    b.className='mv'; b.textContent=c.san;
-    b.onclick=()=>answer(p,c,b);
-    box.appendChild(b);
-  });
+/* ---------- interaction ---------- */
+function pick(i){
+  if(scored) return;
+  if(sel===null){ if(legalFrom(i).length){sel=i;draw();} return; }
+  if(i===sel){ sel=null; draw(); return; }
+  const cand=legalFrom(sel).filter(m=>m.u.slice(2,4)===sqName(i));
+  if(!cand.length){ sel=legalFrom(i).length?i:null; draw(); return; }
+  // promotion: several moves share from/to. Queen unless it is the only option.
+  const mv=cand.find(m=>m.u.length===5&&m.u[4]==='q')||cand[0];
+  sel=null; play(mv);
+}
+$('board').addEventListener('pointerdown',e=>{
+  const pt=$('board').createSVGPoint(); pt.x=e.clientX; pt.y=e.clientY;
+  const p=pt.matrixTransform($('board').getScreenCTM().inverse());
+  let f=Math.floor(p.x/45), r=7-Math.floor(p.y/45);
+  if(flip){f=7-f;r=7-r;}
+  if(f<0||f>7||r<0||r>7) return;
+  pick(r*8+f);
+  e.preventDefault();
+});
+
+/* ---------- applying a move ---------- */
+function apply(u){
+  const from=sqIdx(u.slice(0,2)), to=sqIdx(u.slice(2,4)), p=brd[from];
+  const low=p.toLowerCase();
+  if(low==='p'&&(from%8)!==(to%8)&&!brd[to]) brd[to+(p==='P'?-8:8)]=null; // en passant
+  if(low==='k'&&Math.abs(to-from)===2){                                   // castling
+    const rk=to>from?from+3:from-4, rt=to>from?to-1:to+1;
+    brd[rt]=brd[rk]; brd[rk]=null;
+  }
+  brd[to]=u.length===5 ? (p===p.toUpperCase()?u[4].toUpperCase():u[4]) : p;
+  brd[from]=null;
 }
 
-function answer(p,c,btn){
-  if(answered) return; answered=true;
-  const pred=pCur(p);
-  seen++; expSum+=pred; if(!c.blunder) clean++;
-  [...$('moves').children].forEach((b,i)=>{
-    b.disabled=true;
-    if(p.candidates[i].blunder) b.classList.add('reveal-bad');
-  });
-  btn.classList.add(c.blunder?'pick-bad':'pick-good');
+/* ---------- eval bar ---------- */
+function setBar(win,ref){
+  /* The board auto-flips so the side to move is always at the BOTTOM, and the
+     bar is stacked against it, so the fill grows from the bottom with the
+     MOVER's win%. That is also the perspective every number in the data uses
+     (eval_children scored each child from the mover's point of view), so no
+     conversion is needed and there is nowhere to invert a sign.
 
-  $('verdict').style.display='block';
+     An earlier version converted to White's perspective and then drew
+     (100 - w) from the bottom, which made the light fill grow as the side to
+     move got WORSE -- backwards under any eval-bar convention. */
+  $('ev').style.height=Math.max(0,Math.min(100,win)).toFixed(1)+'%';
+  $('evRef').style.bottom=Math.max(0,Math.min(100,ref)).toFixed(1)+'%';
+}
+
+/* ---------- a turn ---------- */
+function play(mv){
+  scored=true; tried.push(mv);
+  apply(mv.u); draw();
+  const pred=curAt();
+  if(tried.length===1){ seen++; expSum+=pred; if(!mv.b) clean++;
+    shownPositions.push(pos); }
+  setBar(mv.w,pos.best);
+  const best=pos.moves.reduce((a,b)=>b.w>a.w?b:a);
   $('verdict').innerHTML =
-    (c.blunder
-      ? `<b style="color:var(--bad)">Blunder.</b> ${c.san} drops ${c.drop.toFixed(1)} win%.`
-      : `<b style="color:var(--good)">Fine.</b> ${c.san} costs only ${c.drop.toFixed(1)} win%.`)
+    (mv.b?`<b style="color:var(--bad)">Blunder.</b> `:`<b style="color:var(--good)">Fine.</b> `)
+    + `<b>${mv.s}</b> leaves ${mv.w.toFixed(1)}% win, `
+    + (mv.d<0.05?`the best there is.`:`${mv.d.toFixed(1)} points below <b>${best.s}</b> (${best.w.toFixed(1)}%).`)
     + `<br><span class="dim">The model predicted a ${$('elo').value} blunders here
        <b>${(pred*100).toFixed(1)}%</b> of the time.
-       ${(p.frac_blunder_moves*100).toFixed(0)}% of all legal moves here are blunders.</span>
-       <div class="bar"><i style="width:${Math.min(100,pred*100*3).toFixed(1)}%"></i></div>`;
-
-  $('score').textContent=clean;
-  $('seen').textContent=seen;
+       ${(pos.frac_blunder_moves*100).toFixed(0)}% of the ${pos.n_moves} legal moves lose 20%+.</span>`;
+  paintTried();
+  $('undo').disabled=false; $('curveBox').style.display='block'; drawCurve();
+  $('score').textContent=clean; $('seen').textContent=seen;
   $('expected').textContent=expSum.toFixed(1);
-  $('implied').textContent=impliedRating();
-  $('curveBox').style.display='block';
-  drawCurve(p);
+  $('implied').textContent=implied();
+}
+function paintTried(){
+  $('tried').innerHTML=tried.map(m=>
+    `<span class="tag ${m.b?'b':'g'}">${m.s} ${m.d<0.05?'best':'-'+m.d.toFixed(0)}</span>`).join('');
+}
+$('undo').onclick=()=>{
+  brd=parseFEN(pos.fen); scored=false; sel=null; draw();
+  setBar(pos.before,pos.best);
+  $('verdict').innerHTML='Try another move. <span class="dim">Only your first '
+    +'attempt counted towards the score.</span>';
+  $('undo').disabled=true;
+};
+$('reveal').onclick=()=>{
+  const best=pos.moves.reduce((a,b)=>b.w>a.w?b:a);
+  const worst=pos.moves.reduce((a,b)=>b.w<a.w?b:a);
+  $('verdict').innerHTML=`Best: <b>${best.s}</b> (${best.w.toFixed(1)}%). `
+    +`Worst: <b>${worst.s}</b> (${worst.w.toFixed(1)}%, -${worst.d.toFixed(1)}). `
+    +`<span class="dim">${pos.moves.filter(m=>m.b).length} of ${pos.moves.length} `
+    +`legal moves lose 20%+.</span>`;
+};
+$('next').onclick=()=>{ idx=(idx+1)%order.length; render(); };
+$('elo').oninput=()=>{ $('eloLabel').textContent=$('elo').value;
+  if(D){ $('implied').textContent=implied(); if(scored) drawCurve(); } };
+
+function render(){
+  pos=D.positions[order[idx]];
+  brd=parseFEN(pos.fen); flip=!pos.white; sel=null; scored=false; tried=[];
+  draw(); setBar(pos.before,pos.best);
+  $('toMove').textContent=pos.white?'White':'Black';
+  $('posMeta').textContent=pos.n_moves+' legal moves';
+  $('verdict').textContent='Pick a move.';
+  $('tried').innerHTML=''; $('undo').disabled=true;
+  $('curveBox').style.display='none';
 }
 
-// Find the rating whose average predicted blunder rate, over the positions
-// actually shown, matches the player's observed rate. Meaningless below ~5
-// positions, so say so rather than printing a confident number.
-function impliedRating(){
+/* ---------- model readouts ---------- */
+function ri(){return D.ratings.indexOf(+$('elo').value);}
+function curAt(){const i=ri();return pos.curve[i<0?0:i];}
+function implied(){
   if(seen<5) return `\u2014 (need ${5-seen} more)`;
-  const shown=order.slice(0,idx+1).map(i=>D.positions[i]);
-  const obs=(seen-clean)/seen;
-  let best=0,bd=1e9;
-  D.ratings.forEach((r,ri)=>{
-    const m=shown.reduce((s,p)=>s+p.curve[ri],0)/shown.length;
+  const obs=(seen-clean)/seen; let best=0,bd=1e9;
+  D.ratings.forEach((r,k)=>{
+    const m=shownPositions.reduce((s,p)=>s+p.curve[k],0)/shownPositions.length;
     if(Math.abs(m-obs)<bd){bd=Math.abs(m-obs);best=r;}
   });
   return best+(bd>0.15?'?':'');
 }
-
-function drawCurve(p){
-  const W=600,H=110,pad=6, n=p.curve.length, mx=Math.max(...p.curve,0.01);
-  const pts=p.curve.map((v,i)=>[pad+i*(W-2*pad)/(n-1), H-pad-(v/mx)*(H-2*pad)]);
+function drawCurve(){
+  const W=600,H=88,pad=6,n=pos.curve.length,mx=Math.max(...pos.curve,0.01);
+  const pts=pos.curve.map((v,i)=>[pad+i*(W-2*pad)/(n-1),H-pad-(v/mx)*(H-2*pad)]);
   const d=pts.map((q,i)=>(i?'L':'M')+q[0].toFixed(1)+' '+q[1].toFixed(1)).join(' ');
-  const i=ratingIdx(), cx=pad+(i<0?0:i)*(W-2*pad)/(n-1);
-  $('curve').innerHTML=
-    `<path d="${d}" fill="none" stroke="#6ea8fe" stroke-width="2"/>`+
-    `<line x1="${cx}" y1="0" x2="${cx}" y2="${H}" stroke="#8b8f9a" stroke-dasharray="3 3"/>`;
+  const i=ri(),cx=pad+(i<0?0:i)*(W-2*pad)/(n-1);
+  $('curve').innerHTML=`<path d="${d}" fill="none" stroke="#6ea8fe" stroke-width="2"/>`
+    +`<line x1="${cx}" y1="0" x2="${cx}" y2="${H}" stroke="#8b8f9a" stroke-dasharray="3 3"/>`;
 }
 </script>

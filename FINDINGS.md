@@ -908,3 +908,76 @@ uniformly from legal moves, so "9.9x better than random" is a benchmark against
 random, not a statement about human search. The honest denominator is a
 human-policy baseline (Maia); out of scope, and the README must say so rather
 than let "selection" imply a cognitive mechanism.
+## The challenge game, v2 (interactive board)
+
+Rebuilt from multiple-choice buttons to a real board. The enabling fact:
+`eval_children.py --per-move` already evaluated EVERY legal child, so the page
+knows the truth about any move the player makes. Free move selection costs
+nothing extra -- about 31 moves at ~40 bytes is 1.2 KB per position.
+
+What it now does:
+
+- **Click a piece, then its destination.** Legality comes from the stored move
+  list, so the page needs no chess engine and no chess.js. Selecting a piece
+  shows its legal destinations, with capture squares ringed.
+- **Eval bar** driven by the exact Stockfish win% of the move played, with a
+  marker at `best_child_win` so you can see what the position was worth before
+  you touched it.
+- **Take back.** Try any other move and see its evaluation. Only the FIRST
+  attempt counts towards the score, so exploring is free but cannot be farmed.
+- **Show best** reveals the best and worst legal moves and how many of the
+  legal moves lose 20%+.
+- Pieces are the twelve Cburnett SVG groups lifted from `python-chess` at build
+  time and embedded once as a sprite, so the page has zero external
+  dependencies.
+
+Dropping the 60 pre-rendered board SVGs in favour of FEN + one sprite took
+`challenge.json` from **1.9 MB to 0.1 MB**, a 19x cut.
+
+### Verification
+
+Board logic is hand-rolled, so it was checked against `python-chess` as ground
+truth. The JS `apply()` was ported to Python and diffed square by square over
+**759,608 positions from 4,000 random games**: **0 mismatches**, covering 302
+castlings, 77 en passants and 5,126 promotions. An earlier pass had tested
+eleven hand-picked cases; the exhaustive version is what should be quoted,
+because the failure modes here are the positions nobody thinks to pick.
+
+Data checks on the generated JSON, all passing on 60 positions: every stored
+move legal, every SAN matching, stored move count equal to the true legal move
+count, the `white` flag agreeing with the FEN, all twelve sprite ids present
+and matching the names the page builds, and every position containing both a
+blunder and a safe move.
+
+Page checks: all 18 JS element references resolve to elements that exist, no
+element is defined and unused, and there are zero external URLs, so the page is
+genuinely self-contained.
+
+### Three regressions the rewrite introduced, and one bug
+
+The v2 rewrite arrived as a standalone file and silently dropped guards the
+committed version had. All three are restored; the lesson is that a rewrite is
+a diff against the current file, not a fresh draft.
+
+1. **`rating_grid` was re-implemented locally** instead of imported from
+   `build_features`. Semantically correct, but it recreates exactly the
+   single-caller duplication that let the original sweep bug survive. Now
+   imported.
+2. **The `row_id`/FEN consistency guard was gone.** That is the check that
+   stops a mismatched `--features` parquet resolving every id to an unrelated
+   position, silently. Restored.
+3. **The `check_sweep_span` gate was gone**, i.e. the regression test written
+   specifically to stop the flattened-curve bug recurring. Restored, and it
+   passes at 13.53x.
+
+**The eval bar was inverted.** It converted the win% to White's perspective and
+then drew `100 - w` upward from the bottom, so the light fill grew as the side
+to move got *worse*: a position won 90% by the mover rendered as a nearly empty
+bar. Fixed by dropping the conversion entirely -- the board already auto-flips
+so the side to move is at the bottom, and every number in the data is already
+from the mover's point of view, so the fill is now just the mover's win% and
+there is no sign left to invert.
+
+Known limitation, stated on the page: promotions auto-queen. The data carries
+underpromotions and `apply()` handles them correctly, but the click-to-move UI
+has no way to ask which piece, so it always picks the queen.
