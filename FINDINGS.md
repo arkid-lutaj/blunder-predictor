@@ -45,7 +45,7 @@ Two consequences.
    instead of centipawn loss, but it must be said.
 2. **It contaminates the engine_free vs engine_assisted comparison.**
    `engine_assisted` has `winpct_before`, so part of its advantage is just
-   learning "below -337cp, predict zero" — a definitional boundary, not
+   learning "below -337cp, predict zero" - a definitional boundary, not
    insight into human error. Always report that comparison **also on the
    eligible subset** (`winpct_before > 22.46`), where the free win vanishes.
    The gap that survives is the real answer to "how much does an engine help".
@@ -103,7 +103,7 @@ Not a bug. Worth one footnote if anyone asks why the rates differ.
   parsing drift.
 - **20.05% of moves have negative `win_drop`** (the eval improved for the mover
   after their own move). 15.66% of all rows sit in [-1, 0) and only 0.08% below
-  -5, so this is small near-symmetric annotation jitter, not a fifth of the
+ -5, so this is small near-symmetric annotation jitter, not a fifth of the
   evals being broken.
 - **30.50% of positives sit within 5 win% of the threshold**, and 32,043
   negatives sit just under it. This is the irreducible label noise. It caps how
@@ -251,7 +251,7 @@ importance. Group them, or use SHAP on the group.
 Found while reading the importances above. `build_challenge.py` swept
 `mover_elo` alone, leaving `opp_elo`, `mean_elo` and `elo_gap` fixed. Setting
 mover_elo to 2400 while mean_elo stays at 1650 asks the model about a 2400
-playing a 900 — not a position that exists in training, and not the question
+playing a 900 - not a position that exists in training, and not the question
 intended.
 
 Fixed: `rating_grid()` sets `opp_elo = mean_elo = R` and `elo_gap = 0`, so the
@@ -270,8 +270,9 @@ by `build_challenge.py` and `validate_puzzles.py`, raises if the model has no
 `mover_elo`, and skips whichever of the four rating features a reduced feature
 set omits. `challenge.json` was regenerated against it.
 
-Worth noting how it was caught: writing a SECOND consumer of the same sweep
-forced a look at the first. A fix with one caller is easy to believe in.
+It only surfaced because a second script needed the same sweep, which meant
+reading the first one properly. Code with a single caller never gets a second
+pair of eyes.
 
 **The bug was material, not cosmetic.** Comparing the 60 committed challenge
 curves before and after, median absolute change **0.0297** and max **0.1320**.
@@ -285,12 +286,12 @@ A representative position:
 The broken sweep spans **1.65x** from 800 to 2400; the correct one spans
 **4.2x**. Holding `mean_elo` at the position's actual value while moving
 `mover_elo` feeds the model a contradiction, and the rating signal gets diluted
-across the four collinear features — the same collinearity documented above
+across the four collinear features - the same collinearity documented above
 under feature importance, biting in a second place.
 
-So the challenge game was showing a badly flattened rating curve, which is
-precisely the thing it exists to demonstrate. Any figure or demo built on a
-rating sweep must be regenerated after this fix, not just re-read.
+So the demo was flattening the exact effect it was built to show. Anything
+drawn from a rating sweep has to be regenerated after this fix, not just
+re-read.
 
 ### The process rule this earns
 
@@ -311,7 +312,7 @@ Both are now enforced mechanically rather than by intention:
   `mover_elo` is absent.
 - `check_sweep_span()` gates both consumers on the OUTPUT: it kills the run if
   the median curve span falls below **3.0x**. Measured separation on 400 real
-  positions — correct sweep median 6.28x (p10 3.26x), broken 1.83x (p10 1.42x).
+  positions - correct sweep median 6.28x (p10 3.26x), broken 1.83x (p10 1.42x).
   Verified to fire by feeding it the broken sweep.
 
 Note the gate is on the MEDIAN across many curves, not per curve. The correct
@@ -325,14 +326,14 @@ The `calibrated (game-hash test)` row in `train.py` output is NOT a clean
 leakage measurement. It scores a model trained on *component*-train against
 *gamehash*-test, and those two overlap, so the model has seen some of those
 exact rows. It reports +0.0703 (engine_free) and +0.1989 (engine_assisted)
-against +0.0473 and +0.1209 properly, i.e. 49% and 65% inflation — but that
+against +0.0473 and +0.1209 properly, i.e. 49% and 65% inflation - but that
 mixes row memorisation with player leakage.
 
 The honest experiment is a full retrain on the naive split:
 
     python src/train.py --data data/features_blitz.parquet \
-        --splits data/splits_blitz.parquet --split-col split_gamehash \
-        --feature-set engine_free --out models/blitz_free_gamehash
+ --splits data/splits_blitz.parquet --split-col split_gamehash \
+ --feature-set engine_free --out models/blitz_free_gamehash
 
 Compare that model's test score against the component model's test score. Only
 then quote a leakage figure.
@@ -381,7 +382,7 @@ twice, on two different sample sizes.
 
 **The finding strengthens on 4x the data.** engine_assisted is fractionally
 *better* without the clock, i.e. the cost is zero to within noise. Do not
-over-read the positive sign — read it as "no measurable cost".
+over-read the positive sign - read it as "no measurable cost".
 
 The original scope predicted time pressure would dominate. It does not.
 `clock_frac` carries 9.1% gain share in full-month engine_free, but removing
@@ -459,9 +460,9 @@ Full month, engine_assisted, on 1,257,458 test rows:
 | 1600-2000 | 385,198 | 3.66% | 3.65% | 0.0009 |
 | 2000+ | 347,112 | 2.54% | 2.56% | 0.0011 |
 
-This is the result the whole project rests on, and it now stands on 4x the
-rows: each band alone is larger than the entire one-week test set. Aggregate
-calibration can be correct by accident — over-predicting weak players
+This is the check that matters most, and it now runs on 4x the rows. Each
+band on its own is bigger than the whole one-week test set used to be. Aggregate
+calibration can be correct by accident - over-predicting weak players
 cancelling under-predicting strong ones. It is not happening here, so **"a 1400
 blunders here 23% of the time" is a defensible sentence**, which is the
 product.
@@ -501,8 +502,8 @@ presentation notes:
   negligible. Do not quote them.
 - **The engine_assisted models show 9 deciles, not 10.** Its predictions pile
   up so tightly near zero that two decile edges coincide and `qcut` merges
-  them, leaving a 278,635-row bottom bin. Not a bug — a consequence of a
-  sharper model on a 3.9% base rate — but the table must not be presented as
+  them, leaving a 278,635-row bottom bin. Not a bug - a consequence of a
+  sharper model on a 3.9% base rate - but the table must not be presented as
   if a decile went missing.
 
 ## Windows / Git Bash gotchas
@@ -523,7 +524,7 @@ presentation notes:
 ## The zstd skippable-frame bug (cost most of an evening)
 
 **Symptom.** The full-month parse printed its banner and then nothing. Killed
-after two minutes it reported `seen: 0`. Not slow — zero blocks yielded ever.
+after two minutes it reported `seen: 0`. Not slow - zero blocks yielded ever.
 
 **Cause.** Lichess' HTTP file is written by **pzstd**, which prefixes every
 compressed frame with a 12-byte *skippable* frame holding that frame's size, so
@@ -537,7 +538,7 @@ yielded, and grew its buffer without bound. Deterministic: waiting longer could
 never have helped.
 
 **Fix.** `is_zstd()` accepts both. Skippable magic is a **range**,
-0x184D2A50 to 0x184D2A5F, so all sixteen values must match — checking only
+0x184D2A50 to 0x184D2A5F, so all sixteen values must match - checking only
 0x184D2A50 would still break on other writers. Verified against a synthetic
 pzstd-style multi-frame archive parsed end to end, plus edge cases at 0x...4F
 and 0x...60.
@@ -648,7 +649,7 @@ sample, giving 9.2x better-than-random instead of the correct **8.7x**.
 **The 5.7x -> 16.5x rating sweep is a PREDICTION, not a measurement.** It is
 computed by holding `frac_blunder_moves` constant across rating, which is
 precisely the hypothesis the run exists to test. Conditional until the data
-lands. **It landed, and the hypothesis held — see "Phase 7 results" below.**
+lands. **It landed, and the hypothesis held - see "Phase 7 results" below.**
 
 ### Self-test: what it does and does not show
 
@@ -707,7 +708,7 @@ quantile, not just at the mean (p50 0.278 -> 0.300, p75 0.667 -> 0.600). **A
 2000 and a 1000 stand in front of minefields of the same thickness. The 2000
 steps in a third as often.** Better-than-random rises 5.3x -> 14.9x.
 
-That is the claim the phase was scoped to test, and it is the strong version.
+That is what this phase set out to test, and it came back in the strong form.
 
 ### The uncontrolled number is an artefact, and it is worth showing
 
@@ -735,7 +736,7 @@ Two independent confirmations that it is an artefact and not an effect:
   removing a real effect, `s` would move.
 - **The self-test reproduces it from censoring alone.** A new floor case plants
   *zero* availability effect, then censors `frac` to 0 on 15% of weak rows and
-  7% of strong rows — the observed ineligible shares. The uncontrolled contrast
+  7% of strong rows - the observed ineligible shares. The uncontrolled contrast
   reads **-8.53%**, against -10.6% on real data; the control recovers
   **-0.00%**. Almost the whole real -10.6% is accounted for by censoring.
 
@@ -798,7 +799,7 @@ on `winpct_before` from Lichess' deep annotation, while this floor is on
 different quantities, so a handful disagree. The report prints the rate and
 warns above 1%.
 
-## Phase 9: external validation on puzzles — POSITIVE BUT WEAK
+## Phase 9: external validation on puzzles - POSITIVE BUT WEAK
 
 The one check that uses a difficulty scale measured outside this dump.
 20,000 puzzles sampled from 1,902,527 surviving filters (RatingDeviation < 80,
@@ -818,7 +819,7 @@ puzzle's own Elo directly.
 
 **This does not meet the acceptance bar.** Phase 9 was scoped to want 0.4-0.6
 as a strong result. We got +0.11. At n=16,031 the standard error is ~0.008, so
-the correlation is ~14 se from zero — **definitively positive and definitively
+the correlation is ~14 se from zero - **definitively positive and definitively
 small**. Report it that way; do not round it up into a success.
 
 Every theme is positive, so it is not one group carrying a spurious average:
@@ -834,7 +835,7 @@ Every theme is positive, so it is not one group carrying a spurious average:
 ### Contamination check: was this measuring the rating-sweep bug?
 
 D10 is computed entirely from the rating sweep, so a flattened sweep would
-compress D10 and attenuate the correlation — producing exactly the
+compress D10 and attenuate the correlation - producing exactly the
 weak-but-positive result observed. The bug was found in the same session, so
 this had to be ruled out before the availability story could be believed.
 
@@ -854,8 +855,8 @@ property of the curve shape that no bookkeeping error could fake.
 
 The mechanism was real, though: the bug attenuates the correlation by ~25%
 (+0.1250 -> +0.0931) and more than triples censoring. It simply was not what
-happened here. Worth recording because the reasoning was correct and would have
-been decisive under slightly different timing.
+happened here. Recorded because the reasoning held up, and with slightly
+different timing it would have caught a real problem.
 
 ### The compression is the real story
 
@@ -1039,7 +1040,7 @@ calibration table but only ever wrote it to a log, so it now also stores typed
 `bands` records in its JSON. Re-parsing formatted strings back into numbers is
 exactly how a site starts disagreeing with its data.
 
-**One rendering bug worth recording.** Band labels are strings like `<1200`.
+**A rendering bug that hid itself.** Band labels are strings like `<1200`.
 Written unescaped into a table cell the browser reads `<1200` as the start of a
 malformed tag and swallows the rest of the cell, so the row vanishes from the
 rendered page while looking perfectly fine in the HTML source. Caught by
