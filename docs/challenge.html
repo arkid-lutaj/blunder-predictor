@@ -1,0 +1,158 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Blunder Challenge</title>
+<style>
+  :root { --bg:#12141a; --fg:#e8e8ea; --dim:#8b8f9a; --acc:#6ea8fe;
+          --bad:#f2777a; --good:#7ec699; --card:#1b1e26; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.55
+         ui-sans-serif,system-ui,-apple-system,sans-serif; }
+  .wrap { max-width:860px; margin:0 auto; padding:24px 18px 80px; }
+  h1 { font-size:22px; margin:0 0 4px; letter-spacing:-.01em; }
+  .sub { color:var(--dim); font-size:13px; margin-bottom:22px; }
+  .card { background:var(--card); border:1px solid #262a34; border-radius:12px;
+          padding:18px; margin-bottom:16px; }
+  .board { display:flex; justify-content:center; margin-bottom:14px; }
+  .board svg { max-width:100%; height:auto; border-radius:6px; }
+  .moves { display:flex; flex-wrap:wrap; gap:8px; }
+  button.mv { font:600 15px ui-monospace,SFMono-Regular,Menlo,monospace;
+        background:#232735; color:var(--fg); border:1px solid #333949;
+        border-radius:8px; padding:10px 16px; cursor:pointer; min-width:76px; }
+  button.mv:hover:not(:disabled) { border-color:var(--acc); }
+  button.mv:disabled { cursor:default; opacity:.95; }
+  .mv.pick-bad { background:#3a2226; border-color:var(--bad); color:#ffd9da; }
+  .mv.pick-good { background:#1e3227; border-color:var(--good); color:#d6f2e2; }
+  .mv.reveal-bad { border-color:#5a3237; }
+  .row { display:flex; justify-content:space-between; align-items:baseline;
+         gap:12px; flex-wrap:wrap; }
+  .num { font:600 28px ui-monospace,monospace; }
+  .dim { color:var(--dim); font-size:13px; }
+  input[type=range] { width:100%; accent-color:var(--acc); }
+  .verdict { margin-top:14px; padding:12px 14px; border-radius:8px;
+             background:#1f232d; font-size:14px; }
+  .bar { height:6px; background:#262a34; border-radius:3px; overflow:hidden;
+         margin-top:6px; }
+  .bar > i { display:block; height:100%; background:var(--acc); }
+  .ctr { text-align:center; }
+  svg.curve { width:100%; height:110px; }
+</style>
+<div class="wrap">
+  <h1>Blunder Challenge</h1>
+  <div class="sub">Every legal move in these positions was evaluated by
+    Stockfish, so the page knows the truth about whatever you pick. The model
+    never saw the answer &mdash; it only predicts how often a player of a given
+    rating blunders here.</div>
+
+  <div class="card">
+    <label class="dim">Your rating: <b id="eloLabel">1500</b></label>
+    <input type="range" id="elo" min="800" max="2450" step="50" value="1500">
+    <div class="row" style="margin-top:10px">
+      <div><span class="num" id="score">0</span><span class="dim"> / <span id="seen">0</span> clean</span></div>
+      <div class="dim ctr">model expected <b id="expected">0.0</b> blunders from you</div>
+      <div class="dim">you played like <b id="implied">&mdash;</b></div>
+    </div>
+  </div>
+
+  <div class="card" id="posCard">
+    <div class="board" id="board"></div>
+    <div class="row" style="margin-bottom:10px">
+      <div class="dim"><b id="toMove">White</b> to move &mdash; pick a move</div>
+      <div class="dim" id="posMeta"></div>
+    </div>
+    <div class="moves" id="moves"></div>
+    <div class="verdict" id="verdict" style="display:none"></div>
+    <div id="curveBox" style="display:none;margin-top:14px">
+      <div class="dim">predicted blunder rate by rating</div>
+      <svg class="curve" id="curve" viewBox="0 0 600 110" preserveAspectRatio="none"></svg>
+    </div>
+  </div>
+
+  <div class="ctr"><button class="mv" id="next">Next position &rarr;</button></div>
+</div>
+<script>
+let D=null, order=[], idx=0, seen=0, clean=0, expSum=0, answered=false;
+const $=id=>document.getElementById(id);
+
+fetch('challenge.json').then(r=>r.json()).then(d=>{
+  D=d; order=d.positions.map((_,i)=>i);
+  for(let i=order.length-1;i>0;i--){const j=(Math.random()*(i+1))|0;[order[i],order[j]]=[order[j],order[i]];}
+  render();
+});
+
+function ratingIdx(){ return D.ratings.indexOf(+$('elo').value); }
+function pCur(p){ const i=ratingIdx(); return p.curve[i<0?0:i]; }
+
+$('elo').oninput=()=>{ $('eloLabel').textContent=$('elo').value;
+  if(D&&answered) drawCurve(D.positions[order[idx]]); };
+$('next').onclick=()=>{ idx=(idx+1)%order.length; render(); };
+
+function render(){
+  answered=false;
+  const p=D.positions[order[idx]];
+  $('board').innerHTML=p.svg;
+  $('toMove').textContent=p.to_move;
+  $('posMeta').textContent=p.n_moves+' legal moves';
+  $('verdict').style.display='none';
+  $('curveBox').style.display='none';
+  const box=$('moves'); box.innerHTML='';
+  p.candidates.forEach(c=>{
+    const b=document.createElement('button');
+    b.className='mv'; b.textContent=c.san;
+    b.onclick=()=>answer(p,c,b);
+    box.appendChild(b);
+  });
+}
+
+function answer(p,c,btn){
+  if(answered) return; answered=true;
+  const pred=pCur(p);
+  seen++; expSum+=pred; if(!c.blunder) clean++;
+  [...$('moves').children].forEach((b,i)=>{
+    b.disabled=true;
+    if(p.candidates[i].blunder) b.classList.add('reveal-bad');
+  });
+  btn.classList.add(c.blunder?'pick-bad':'pick-good');
+
+  $('verdict').style.display='block';
+  $('verdict').innerHTML =
+    (c.blunder
+      ? `<b style="color:var(--bad)">Blunder.</b> ${c.san} drops ${c.drop.toFixed(1)} win%.`
+      : `<b style="color:var(--good)">Fine.</b> ${c.san} costs only ${c.drop.toFixed(1)} win%.`)
+    + `<br><span class="dim">The model predicted a ${$('elo').value} blunders here
+       <b>${(pred*100).toFixed(1)}%</b> of the time.
+       ${(p.frac_blunder_moves*100).toFixed(0)}% of all legal moves here are blunders.</span>
+       <div class="bar"><i style="width:${Math.min(100,pred*100*3).toFixed(1)}%"></i></div>`;
+
+  $('score').textContent=clean;
+  $('seen').textContent=seen;
+  $('expected').textContent=expSum.toFixed(1);
+  $('implied').textContent=impliedRating();
+  $('curveBox').style.display='block';
+  drawCurve(p);
+}
+
+// Find the rating whose average predicted blunder rate, over the positions
+// actually shown, matches the player's observed rate. Meaningless below ~5
+// positions, so say so rather than printing a confident number.
+function impliedRating(){
+  if(seen<5) return `\u2014 (need ${5-seen} more)`;
+  const shown=order.slice(0,idx+1).map(i=>D.positions[i]);
+  const obs=(seen-clean)/seen;
+  let best=0,bd=1e9;
+  D.ratings.forEach((r,ri)=>{
+    const m=shown.reduce((s,p)=>s+p.curve[ri],0)/shown.length;
+    if(Math.abs(m-obs)<bd){bd=Math.abs(m-obs);best=r;}
+  });
+  return best+(bd>0.15?'?':'');
+}
+
+function drawCurve(p){
+  const W=600,H=110,pad=6, n=p.curve.length, mx=Math.max(...p.curve,0.01);
+  const pts=p.curve.map((v,i)=>[pad+i*(W-2*pad)/(n-1), H-pad-(v/mx)*(H-2*pad)]);
+  const d=pts.map((q,i)=>(i?'L':'M')+q[0].toFixed(1)+' '+q[1].toFixed(1)).join(' ');
+  const i=ratingIdx(), cx=pad+(i<0?0:i)*(W-2*pad)/(n-1);
+  $('curve').innerHTML=
+    `<path d="${d}" fill="none" stroke="#6ea8fe" stroke-width="2"/>`+
+    `<line x1="${cx}" y1="0" x2="${cx}" y2="${H}" stroke="#8b8f9a" stroke-dasharray="3 3"/>`;
+}
+</script>

@@ -1,0 +1,92 @@
+
+==========================================================================
+DEPTH SENSITIVITY: data/features_blitz_full.parquet
+==========================================================================
+engine: C:\Users\arkid\projects\blunder-predictor\tools\stockfish\stockfish-windows-x86-64-avx2.exe
+depths: [8, 10, 12] | threshold 20 win% | 7 workers
+6,265,721 valid rows -> 500 sampled across 4 strata
+
+  running depth 8 over 500 positions ...
+    depth 8: 100/500 positions (9s)
+    depth 8: 200/500 positions (15s)
+    depth 8: 300/500 positions (19s)
+    depth 8: 400/500 positions (25s)
+    depth 8: 500/500 positions (29s)
+  depth 8 done in 30s
+
+  running depth 10 over 500 positions ...
+    depth 10: 100/500 positions (17s)
+    depth 10: 200/500 positions (31s)
+    depth 10: 300/500 positions (40s)
+    depth 10: 400/500 positions (52s)
+    depth 10: 500/500 positions (66s)
+  depth 10 done in 66s
+
+  running depth 12 over 500 positions ...
+    depth 12: 100/500 positions (42s)
+    depth 12: 200/500 positions (75s)
+    depth 12: 300/500 positions (101s)
+    depth 12: 400/500 positions (132s)
+    depth 12: 500/500 positions (167s)
+  depth 12 done in 167s
+
+500 positions completed at every depth (100.0% of the sample)
+
+==========================================================================
+1. COST
+==========================================================================
+depth  wall clock  s / position  est. 40,000 positions  vs deepest
+-----  ----------  ------------  ---------------------  ----------
+8             30s         0.059                  0.7 h       0.18x
+10            66s         0.132                  1.5 h       0.40x
+12           167s         0.333                  3.7 h       1.00x
+
+mean legal moves per position: 31.4 -- that is how many engine calls
+each position costs, which is why depth is expensive here.
+
+==========================================================================
+2. AGREEMENT ON `blunder_available`
+==========================================================================
+prevalence of the flag at each depth (read this FIRST):
+
+depth  flag true    n
+-----  ---------  ---
+8          83.4%  500
+10         82.8%  500
+12         82.8%  500
+
+
+pair        agreement  kappa  both  neither  only 1st  only 2nd
+----------  ---------  -----  ----  -------  --------  --------
+d8 vs d10      99.00%  0.964   413       82         4         1
+d8 vs d12      99.00%  0.964   413       82         4         1
+d10 vs d12     99.20%  0.972   412       84         2         2
+
+==========================================================================
+3. CORRELATION ON `frac_blunder_moves`
+==========================================================================
+pair        pearson  spearman  mean |diff|  mean bias (2nd-1st)
+----------  -------  --------  -----------  -------------------
+d8 vs d10    0.9764    0.9792       0.0295              +0.0052
+d8 vs d12    0.9713    0.9731       0.0312              +0.0012
+d10 vs d12   0.9691    0.9690       0.0261              -0.0041
+
+depth  mean frac_blunder_moves  median     p90
+-----  -----------------------  ------  ------
+8                       0.3633  0.2571  0.8949
+10                      0.3686  0.2750  0.8953
+12                      0.3645  0.2710  0.9002
+
+==========================================================================
+RECOMMENDATION
+==========================================================================
+  depth 8 vs 12: agreement 99.00% (need 97%), kappa 0.964 (need 0.85), 5.65x faster -> ACCEPT
+  depth 10 vs 12: agreement 99.20% (need 97%), kappa 0.972 (need 0.85), 2.53x faster -> ACCEPT
+
+USE --depth 8. It reproduces depth 12's answer (99.0% agreement,
+kappa 0.964) at 5.65x the speed, putting the 40,000-position run at
+about 0.7 hours.
+
+Caveat: this measures agreement on THIS sample of positions. It says
+nothing about whether the deepest depth here is itself deep enough in an
+absolute sense; it only says where the answer stops moving.

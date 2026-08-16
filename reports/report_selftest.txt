@@ -1,0 +1,16 @@
+
+==============================================================================
+SELF-TEST: colour-symmetry gate
+==============================================================================
+fixture: 2,000,000 rows, P(win_drop>20)=3.783%, P(<0)=19.4%, P(<-20)=0.0010%
+gate tolerance: 1.20x
+
+healthy        -> pass
+               white - black = -0.004pp | ratio 1.001x | 0.1 standard errors
+sign-flipped   -> FAIL
+               white - black = +3.780pp | ratio 3439.189x | 198.1 standard errors
+
+Both directions behave: healthy data passes, a simulated sign flip is
+caught with more than three orders of magnitude of headroom. This is the
+fixture behind the claim in FINDINGS.md, so re-run it rather than taking
+it on trust.

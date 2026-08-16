@@ -1,0 +1,26 @@
+
+==============================================================================
+SELF-TEST: recover a planted availability/selection split
+==============================================================================
+planted availability share: 30.0%   selection share: 70.0%
+1,400,000 synthetic positions across 7 bands, f drawn Beta(conc=4) around its band mean, blunder ~ Bernoulli(p)
+
+band  p true   p est  f true   f est  s true   s est
+----  ------  ------  ------  ------  ------  ------
+1100  0.0700  0.0702  0.4400  0.4406  0.1591  0.1594
+1300  0.0590  0.0591  0.4179  0.4177  0.1411  0.1414
+1500  0.0497  0.0496  0.3970  0.3973  0.1251  0.1249
+1700  0.0418  0.0421  0.3770  0.3779  0.1110  0.1113
+1900  0.0352  0.0350  0.3581  0.3575  0.0984  0.0980
+2100  0.0297  0.0296  0.3401  0.3401  0.0873  0.0872
+2300  0.0250  0.0251  0.3231  0.3229  0.0774  0.0776
+
+term                   planted  recovered  abs error
+---------------------  -------  ---------  ---------
+availability share       30.0%      30.2%     0.0017
+selection share          70.0%      69.8%     0.0017
+residual (must be ~0)        0   2.22e-16
+
+PASS: recovered 30.2% against a planted 30.0%, residual 2.2e-16.
+The estimator is unbiased on data with a known answer, so a share
+reported on real data means what it says.

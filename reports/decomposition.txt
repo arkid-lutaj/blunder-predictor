@@ -1,0 +1,177 @@
+
+==========================================================================
+0. SANITY: is the binary flag informative, and do the floors agree?
+==========================================================================
+  blunder_available is true in 81.5% of positions
+  frac_blunder_moves: median 0.250, p90 0.886, mean 0.344
+  -> the binary flag is near-constant and carries little information.
+     The decomposition therefore uses frac_blunder_moves, which is also
+     exactly what uniform-random play would score.
+
+  below the mechanical floor: 15,930 positions, max frac_blunder_moves 0.000
+  labelled blunders in those rows: 6 (0.038%)
+  Those are not an inconsistency. The LABEL's floor is on
+  winpct_before, from Lichess' deep annotation; this floor is on
+  best_child_win from a depth-8 sweep measured against the best
+  child. Two different quantities, so a handful disagree.
+
+==========================================================================
+1. UNCONTROLLED: by rating band, all positions
+==========================================================================
+  Reported for completeness. It is NOT the headline -- section 2
+  shows most of the availability share here is the mechanical floor.
+
+band       n       P(blunder)  E[frac]  s = p/f  vs random
+---------  ------  ----------  -------  -------  ---------
+<1200      37,366  6.1232%     32.7%    0.1875   5.3x     
+1200-1600  37,530  4.5617%     34.0%    0.1342   7.5x     
+1600-2000  37,523  3.5205%     34.9%    0.1008   9.9x     
+2000+      37,581  2.4214%     36.0%    0.0672   14.9x    
+
+  contrast <1200 -> 2000+
+  D log p = -0.9277   D log f = +0.0980   D log s = -1.0258
+  residual +2.22e-16  (must be ~0; the identity is exact)
+
+  AVAILABILITY share  -10.6%   (do weak players face thicker minefields?)
+  SELECTION    share +110.6%   (do they step in them more often?)
+
+  bootstrap 95% CI (400 resamples, clustered by game_id):
+    availability [-12.6%, -8.8%]
+    selection    [+108.8%, +112.6%]
+    -> availability EXCLUDES zero
+
+  slope check (all bands, per 100 Elo): availability -10.5%, selection +110.5%
+    log p slope -0.0777 per 100 Elo
+    should agree with the endpoint contrast; if it does not, one band is driving
+    the result
+
+==========================================================================
+2. HEADLINE, MECHANICAL CONTROL: best_child_win > 22.46
+==========================================================================
+  Below this, no child can be 20 win%% worse than the best, so
+  frac_blunder_moves is forced to zero by arithmetic rather than by
+  the position being safe.
+  134,070 of 150,000 positions (89.4%)
+
+  WHY THIS MATTERS HERE. Weak players sit below the floor far more
+  often, so censored zeros drag their mean frac down and f appears to
+  RISE with rating. Removing them flattens it:
+
+  band       n       below floor  E[frac] all  E[frac] eligible
+  ---------  ------  -----------  -----------  ----------------
+  <1200      37,366  14.90%       0.3266       0.3838          
+  1200-1600  37,530  11.41%       0.3400       0.3838          
+  1600-2000  37,523  9.40%        0.3493       0.3856          
+  2000+      37,581  6.79%        0.3603       0.3865          
+
+band       n       P(blunder)  E[frac]  s = p/f  vs random
+---------  ------  ----------  -------  -------  ---------
+<1200      31,798  7.1923%     38.4%    0.1874   5.3x     
+1200-1600  33,246  5.1435%     38.4%    0.1340   7.5x     
+1600-2000  33,995  3.8800%     38.6%    0.1006   9.9x     
+2000+      35,031  2.5948%     38.6%    0.0671   14.9x    
+
+  contrast <1200 -> 2000+
+  D log p = -1.0195   D log f = +0.0069   D log s = -1.0264
+  residual +2.22e-16  (must be ~0; the identity is exact)
+
+  AVAILABILITY share   -0.7%   (do weak players face thicker minefields?)
+  SELECTION    share +100.7%   (do they step in them more often?)
+
+  bootstrap 95% CI (400 resamples, clustered by game_id):
+    availability [-1.9%, +0.4%]
+    selection    [+99.6%, +101.9%]
+    -> availability includes zero
+
+  slope check (all bands, per 100 Elo): availability -0.8%, selection +100.8%
+    log p slope -0.0854 per 100 Elo
+    should agree with the endpoint contrast; if it does not, one band is driving
+    the result
+
+  Note s = p/f is unchanged from section 1 to four decimals. The
+  floor removes matched mass from p and f, so it cannot move their
+  ratio -- an internal check that section 2 removes an artefact
+  rather than a real effect.
+
+==========================================================================
+3. CAUSAL CONTROL: within winpct_before bands
+==========================================================================
+  Rating correlates with the eval distribution, so a marginal
+  comparison confounds 'faces thicker minefields' with 'spends more
+  time in decided positions'. Holding the eval band fixed separates
+  them. Each band gets its own interval: the cells here are 10x
+  smaller than in section 2 and a point estimate would over-read.
+
+  --- winpct_before losing (14,976 positions) ---
+  band       n      P(blunder)  E[frac]  s = p/f  vs random
+  ---------  -----  ----------  -------  -------  ---------
+  <1200      3,592  4.6771%     31.5%    0.1487   6.7x     
+  1200-1600  3,868  2.8956%     31.2%    0.0929   10.8x    
+  1600-2000  3,850  2.2597%     32.2%    0.0702   14.2x    
+  2000+      3,666  2.2095%     32.5%    0.0679   14.7x    
+    availability -4.5%   selection +104.5%   95% CI [-10.9%, +1.1%]  includes 0
+
+  --- winpct_before balanced (71,374 positions) ---
+  band       n       P(blunder)  E[frac]  s = p/f  vs random
+  ---------  ------  ----------  -------  -------  ---------
+  <1200      14,679  5.7497%     34.6%    0.1662   6.0x     
+  1200-1600  17,138  3.9561%     34.9%    0.1133   8.8x     
+  1600-2000  18,665  3.0485%     35.1%    0.0867   11.5x    
+  2000+      20,892  1.8476%     35.5%    0.0520   19.2x    
+    availability -2.4%   selection +102.4%   95% CI [-4.1%, -0.6%]  EXCLUDES 0
+
+  --- winpct_before better (21,880 positions) ---
+  band       n      P(blunder)  E[frac]  s = p/f  vs random
+  ---------  -----  ----------  -------  -------  ---------
+  <1200      5,456  13.9296%    55.2%    0.2525   4.0x     
+  1200-1600  5,554  9.9208%     54.2%    0.1831   5.5x     
+  1600-2000  5,508  7.8613%     53.6%    0.1468   6.8x     
+  2000+      5,362  5.0727%     53.5%    0.0948   10.5x    
+    availability +3.0%   selection +97.0%   95% CI [+1.1%, +5.2%]  EXCLUDES 0
+
+  --- winpct_before winning (22,034 positions) ---
+  band       n      P(blunder)  E[frac]  s = p/f  vs random
+  ---------  -----  ----------  -------  -------  ---------
+  <1200      7,181  7.1717%     39.9%    0.1799   5.6x     
+  1200-1600  5,810  6.3511%     42.1%    0.1510   6.6x     
+  1600-2000  4,979  4.6194%     44.4%    0.1041   9.6x     
+  2000+      4,064  4.1831%     46.4%    0.0902   11.1x    
+    availability -28.0%   selection +128.0%   95% CI [-41.1%, -18.6%]  EXCLUDES 0
+
+==========================================================================
+4. DISTRIBUTION OF frac_blunder_moves BY RATING (deciles, not means)
+==========================================================================
+  median 0.25 against p90 0.89 makes the mean a poor summary. If the
+  whole curve is flat across rating, the availability channel is
+  genuinely empty rather than merely small on average.
+
+band       n       p10    p25    p50    p75    p90  
+---------  ------  -----  -----  -----  -----  -----
+<1200      31,798  0.021  0.129  0.278  0.667  0.905
+1200-1600  33,246  0.033  0.143  0.286  0.644  0.900
+1600-2000  33,995  0.034  0.150  0.292  0.629  0.900
+2000+      35,031  0.036  0.156  0.300  0.600  0.895
+
+==========================================================================
+SUMMARY
+==========================================================================
+  On the mechanically controlled contrast (<1200 -> 2000+),
+  -1% of the drop in blunder rate runs through availability
+  and 101% through selection.
+  Availability 95% CI [-1.9%, +0.4%], including zero.
+
+  That interval is NARROW and brackets zero, so this is a
+  precise null rather than an absence of power: the data
+  can rule out an availability channel worth more than a
+  couple of points, not merely fail to detect one.
+
+  The availability channel is essentially empty. Position
+  difficulty is not something weak players walk into more
+  often; they fall for it more often. That is the stronger
+  claim and the one the phase was scoped to test.
+
+  Caveat: the selection ratio s is a ratio of a measured probability
+  to what UNIFORM-RANDOM play would score. Humans do not sample
+  uniformly from legal moves, so s is a benchmark against random, not
+  a claim about human search. A human-policy baseline (Maia) would be
+  the honest denominator and is out of scope.
