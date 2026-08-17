@@ -670,17 +670,14 @@ function refreshEstimate(){
 function play(mv){
   scored=true; tried.push(mv);
   const sq=mvSquares(mv.u);
-  const best=pos.moves.reduce((a,b)=>b.w>a.w?b:a);
   lastMove=sq;
-  // your move in its verdict colour, and if it was not the best, the best move
-  // alongside it so the comparison is on the board rather than in a sentence
+  // ONLY your move. Drawing the best move here, or naming it in the verdict
+  // below, gives the answer away before "Show best & worst" is pressed, which
+  // makes that button pointless and removes any reason to think about the
+  // position. How much the move cost is fine to show; what you should have
+  // played is not.
   arrows=[{...sq, color: mv.b?'#f2777a':'#7ec699'}];
-  const items=[{c: mv.b?'#f2777a':'#7ec699', t:'your move'}];
-  if(mv.d>=0.05){
-    arrows.push({...mvSquares(best.u), color:'#6ea8fe', w:5, op:0.75});
-    items.push({c:'#6ea8fe', t:'best move ('+best.s+')'});
-  }
-  setLegend(items);
+  setLegend([{c: mv.b?'#f2777a':'#7ec699', t:'your move'}]);
   apply(mv.u); draw();
   if(tried.length===1){
     played.push({p:order[idx], blundered:!!mv.b});
@@ -691,8 +688,8 @@ function play(mv){
     (mv.b?`<b style="color:var(--bad)">That one loses a lot.</b> `
         :`<b style="color:var(--good)">Fine move.</b> `)
     + `<b>${mv.s}</b> leaves you with a ${mv.w.toFixed(0)}% chance of winning`
-    + (mv.d<0.05?`, the best available.`
-              :`, which is ${mv.d.toFixed(0)} points worse than <b>${best.s}</b> (${best.w.toFixed(0)}%).`)
+    + (mv.d<0.05?`, which is the best move here.`
+              :`, ${mv.d.toFixed(0)} points below the best move available.`)
     + `<br><span class="dim">Players around ${pt_label()} blunder here about
        <b>${(pred*100).toFixed(0)}%</b> of the time.
        ${Math.round(pos.frac_blunder_moves*100)}% of the ${pos.n_moves} legal
