@@ -1121,3 +1121,45 @@ cannot pin down a rating, and the bias runs upward because most players blunder
 zero or one times in ten positions and zero is weak evidence. The page says
 "very rough so far" below about 700 points of width, which is the honest way to
 present it. The 25-position run is the one to quote.
+
+## Should the models be trained longer? Measured, and the answer is "barely"
+
+`full_free` and `full_assisted` both ran to round 2000 of a 2000 cap with
+validation loss still falling, so they were truncated rather than converged.
+Retrained with an 8000-round ceiling:
+
+| | rounds | best iteration | Brier skill | ROC-AUC |
+|---|---:|---:|---:|---:|
+| capped at 2000 | 2000 | 1964 (truncated) | +0.0496 | 0.7920 |
+| ceiling 8000 | 8000 | **2405** (converged) | **+0.0498** | 0.7923 |
+
+So the models really were undertrained, converging needs about **2405** rounds,
+and the whole thing is worth **+0.0002 Brier skill**, or 0.4% relative. Not
+worth re-shipping the models and cascading new numbers through the README, the
+demo and the figures for a change in the fourth decimal. `--rounds` default
+raised to 4000 so early stopping decides rather than the ceiling.
+
+Between rounds 1950 and 2000 validation loss improved by 0.00001, so the flat
+tail was visible in the log all along. Hyperparameters are even less
+interesting: the spread across trials was 0.00000 on this run and 0.00008 to
+0.00016 earlier. **Data volume is the only lever that has ever moved this
+model.**
+
+### The cap detector was broken in the way that mattered
+
+`hit_round_cap` tested `best_iteration >= rounds`. With early stopping that is
+a false negative exactly when the cap bites: early stopping needs 50 rounds of
+no improvement before it fires, so a converged run always lands at or below
+`rounds - 50`, and a truncated run lands above it. `full_free` finished at 1964
+of 2000 and the old check read that as "converged fine".
+
+Now `hit_cap(best_iteration, rounds)` is `best_iteration > rounds - EARLY_STOP`,
+with the boundary case checked: 1950 of 2000 is exactly consistent with early
+stopping having fired and is NOT a cap hit; 1951 is. Seven cases tested,
+including both real models.
+
+The general shape of this is worth remembering, since it is the second time in
+this project: a guard whose failure mode is silence. The colour-symmetry check
+gated on significance and fired on healthy data; this one gated on the wrong
+inequality and stayed quiet on truncated training. Both were found by checking
+the guard against a case where the answer was already known.

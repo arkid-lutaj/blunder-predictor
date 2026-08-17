@@ -68,6 +68,23 @@ def say(*a, **kw) -> None:
     print(*a, **kw)
 
 
+EARLY_STOP = 50
+
+
+def hit_cap(best_iteration: int, rounds: int) -> bool:
+    """Did --rounds cut training short, rather than early stopping ending it?
+
+    The obvious test, best_iteration >= rounds, is wrong and gives a false
+    negative exactly when it matters. Early stopping needs EARLY_STOP rounds of
+    no improvement before it fires, so a run that genuinely converged always
+    reports best_iteration <= rounds - EARLY_STOP. A run truncated by the cap
+    lands ABOVE that line: full_free finished at 1964 of 2000, which the old
+    check read as "converged fine" when in fact the ceiling stopped it and the
+    properly converged model needs 2405 rounds.
+    """
+    return best_iteration > rounds - EARLY_STOP
+
+
 def progress(period: int, label: str, t0: float):
     """Per-iteration progress for one LightGBM trial.
 
@@ -149,7 +166,10 @@ def main() -> int:
     ap.add_argument("--out", required=True, help="prefix, e.g. models/blitz_free")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--n-trials", type=int, default=3)
-    ap.add_argument("--rounds", type=int, default=2000)
+    ap.add_argument("--rounds", type=int, default=4000,
+                    help="ceiling only; early stopping should end training. "
+                         "2000 truncated the engine_free models, which need "
+                         "~2405 rounds to converge.")
     ap.add_argument("--threads", type=int, default=0, help="0 = all cores")
     ap.add_argument("--log-every", type=int, default=50,
                     help="print val log loss every N boosting rounds; 0 "
@@ -204,10 +224,10 @@ def main() -> int:
             f"early stop 50)")
         booster = lgb.train(p, dtrain, num_boost_round=args.rounds,
                             valid_sets=[dval],
-                            callbacks=[lgb.early_stopping(50, verbose=False),
+                            callbacks=[lgb.early_stopping(EARLY_STOP, verbose=False),
                                        progress(args.log_every, label, t0)])
         score = booster.best_score["valid_0"]["binary_logloss"]
-        cap = booster.best_iteration >= args.rounds
+        cap = hit_cap(booster.best_iteration, args.rounds)
         say(f"  {label} done: iters={booster.best_iteration:<5} "
             f"val_ll={score:.5f} ({time.time()-t0:.0f}s)"
             f"{'  [hit --rounds cap]' if cap else ''}")
@@ -271,7 +291,7 @@ def main() -> int:
     meta = {"feature_set": args.feature_set, "no_clock": args.no_clock,
             "features": feats, "params": params,
             "best_iteration": booster.best_iteration,
-            "hit_round_cap": booster.best_iteration >= args.rounds,
+            "hit_round_cap": hit_cap(booster.best_iteration, args.rounds),
             "base_rate_train": float(base), "split_col": args.split_col,
             # Self-describing: SEARCH_SPACE can be reordered, so "n_trials=3"
             # alone does not identify which configurations were compared.
