@@ -39,6 +39,9 @@ import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 
+# The centipawn -> win%% logistic below is LICHESS'S, not this
+# project's: the constant and the form are documented at
+# https://lichess.org/page/accuracy. See THIRD_PARTY.md.
 WIN_K = 0.00368208
 CP_CLAMP = 1000
 MATE_CP = 1200

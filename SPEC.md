@@ -12,6 +12,12 @@ a 2000 blunders 4%".
 ## Label
 blunder = (win%_before - win%_after) > 20, from the MOVER's point of view.
 win% = 50 + 50 * (2 / (1 + exp(-0.00368208 * cp)) - 1), cp clamped to +/-1000.
+
+The win% transform and the constant 0.00368208 are LICHESS'S, documented at
+https://lichess.org/page/accuracy, not this project's. The 20-point threshold
+and the clamp are this project's choices. See THIRD_PARTY.md. Never restate
+this formula without the attribution attached.
+
 Rows where either side of the transition is a forced-mate score have
 label_valid=False and must be excluded from training and metrics.
 

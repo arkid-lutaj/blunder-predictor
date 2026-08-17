@@ -128,3 +128,15 @@ command; `make help` lists every stage.
 
 **[FINDINGS.md](FINDINGS.md)** has every number, plus the bugs and dead ends.
 **[SPEC.md](SPEC.md)** has the invariants.
+
+## Credit where it is due
+
+Positions come from the [Lichess open database](https://database.lichess.org),
+published under CC0. The centipawn-to-win% formula is
+[Lichess's](https://lichess.org/page/accuracy), not mine, and is cited at every
+point of use. Stockfish and python-chess are used as tools; neither is
+redistributed here, and no third-party image, font or SVG is bundled anywhere
+in this repo. Full detail in **[THIRD_PARTY.md](THIRD_PARTY.md)**.
+
+The label design, the availability/selection decomposition, the D10 difficulty
+measure and everything in `src/` are my own.

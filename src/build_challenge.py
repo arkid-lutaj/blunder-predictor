@@ -35,7 +35,6 @@ import json
 import os
 
 import chess
-import chess.svg
 import lightgbm as lgb
 import numpy as np
 import pandas as pd
@@ -101,10 +100,20 @@ def position_info(curve: np.ndarray, lo_i: int = 4, hi_i: int = 24) -> float:
             + (1 - p_lo) * np.log((1 - p_lo) / (1 - p_hi)))
 
 
-def piece_sprite() -> str:
-    """The twelve Cburnett piece groups from python-chess, embedded once."""
-    return "".join(chess.svg.PIECES[k] for k in
-                   ["K", "Q", "R", "B", "N", "P", "k", "q", "r", "b", "n", "p"])
+"""No third-party piece artwork is embedded.
+
+An earlier version copied chess.svg.PIECES out of python-chess into the
+published page. python-chess is GPL-3.0+, so shipping its assets inside an
+MIT-licensed file was a licence conflict, and the package carries no separate
+notice for the artwork itself, which made the art's own provenance impossible
+to attribute accurately from the source we took it from.
+
+The board now draws the Unicode chess characters (U+265A to U+265F). Those are
+codepoints in the Unicode standard rather than someone's artwork, so there is
+nothing to attribute and nothing to infringe. They are rendered as solid glyphs
+for both colours and separated by fill and outline, because the outline
+codepoints (U+2654 to U+2659) render inconsistently and can vanish against a
+light square."""
 
 
 def main() -> int:
@@ -235,13 +244,16 @@ def main() -> int:
     payload = {"ratings": RATINGS, "positions": out_positions,
                "model": os.path.basename(args.model),
                "feature_set": meta["feature_set"],
-               "sprite": piece_sprite()}
+               }
+    # encoding is explicit on both: the page declares utf-8 and the board glyphs
+    # are non-ASCII, and open() defaults to the platform codepage, which is
+    # cp1252 on Windows and cannot encode them at all.
     dest = os.path.join(args.out, "challenge.json")
-    with open(dest, "w") as fh:
-        json.dump(payload, fh)
+    with open(dest, "w", encoding="utf-8") as fh:
+        json.dump(payload, fh, ensure_ascii=False)
 
     html_path = os.path.join(args.out, "challenge.html")
-    with open(html_path, "w") as fh:
+    with open(html_path, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(HTML)
 
     sizes = os.path.getsize(dest) / 1e6
@@ -318,6 +330,12 @@ HTML = r"""<!doctype html>
   .pill{display:inline-block;font:600 11px ui-sans-serif;padding:2px 8px;
         border-radius:99px;background:#232735;border:1px solid #333949;
         color:var(--dim)}
+  text.pc{font-family:"Segoe UI Symbol","Apple Symbols","Noto Sans Symbols 2",
+          "DejaVu Sans","FreeSerif",sans-serif;font-size:35px;
+          text-anchor:middle;dominant-baseline:central;paint-order:stroke;
+          user-select:none}
+  text.pc.w{fill:#fbfbfb;stroke:#22262e;stroke-width:1.7}
+  text.pc.b{fill:#22262e;stroke:#e9edf5;stroke-width:1.1}
   .lgl{fill:var(--sel);opacity:.32}
   .cap{fill:none;stroke:var(--sel);stroke-width:3.4;opacity:.55}
   .from{fill:var(--sel);opacity:.30}
@@ -439,10 +457,6 @@ let lastMove=null,arrows=[],showCoords=false;
 
 fetch('challenge.json').then(r=>r.json()).then(d=>{
   D=d;
-  const sp=document.createElementNS('http://www.w3.org/2000/svg','svg');
-  sp.setAttribute('style','position:absolute;width:0;height:0');
-  sp.innerHTML='<defs>'+d.sprite+'</defs>';
-  document.body.appendChild(sp);
   order=d.positions.map((_,i)=>i);
   shuffle(order);
   try{ showCoords = localStorage.getItem('bp_coords')==='1'; }catch(e){}
@@ -462,8 +476,11 @@ function parseFEN(f){
     }}
   return b;
 }
-const NAME={k:'king',q:'queen',r:'rook',b:'bishop',n:'knight',p:'pawn'};
-const href=p=>'#'+(p===p.toUpperCase()?'white':'black')+'-'+NAME[p.toLowerCase()];
+/* Unicode chess characters, solid glyphs for both colours. The outline
+   codepoints (U+2654-2659) render inconsistently across platforms and can
+   disappear on a light square, so colour is carried by fill and outline
+   instead. Nothing here is third-party artwork. */
+const GLYPH={k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟'};
 
 /* ---------- board ---------- */
 function draw(){
@@ -495,8 +512,10 @@ function draw(){
   for(let i=0;i<64;i++){
     if(!brd[i]) continue;
     const [x,y]=xy(i,S);
-    pc+=`<g transform="translate(${x},${y}) scale(${S/45})" data-sq="${i}"
-          style="cursor:${scored?'default':'grab'}"><use href="${href(brd[i])}"/></g>`;
+    const white=brd[i]===brd[i].toUpperCase();
+    pc+=`<text class="pc ${white?'w':'b'}" x="${x+S/2}" y="${y+S/2+1}"
+          data-sq="${i}" style="cursor:${scored?'default':'grab'}"
+          >${GLYPH[brd[i].toLowerCase()]}</text>`;
   }
   // Files along the bottom, ranks down the left, following the flip so they
   // always match what you are looking at.

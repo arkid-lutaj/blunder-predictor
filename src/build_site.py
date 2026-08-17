@@ -151,7 +151,7 @@ def main() -> int:
     ap.add_argument("--figures", default="figures/")
     ap.add_argument("--out", default="docs/")
     ap.add_argument("--repo",
-                    default="https://github.com/arkidlutaj/blunder-predictor")
+                    default="https://github.com/arkid-lutaj/blunder-predictor")
     args = ap.parse_args()
 
     M = args.metrics

@@ -33,8 +33,9 @@ import pandas as pd
 # Label
 # ---------------------------------------------------------------------------
 
-# Lichess' own logistic fit mapping centipawns to win probability.
-# Confirm against https://lichess.org/page/accuracy before you quote it.
+# LICHESS'S own logistic fit mapping centipawns to win probability, not
+# this project's. Constant and form documented at
+# https://lichess.org/page/accuracy. See THIRD_PARTY.md.
 WIN_K = 0.00368208
 CP_CLAMP = 1000  # Lichess clamps eval to +/- 10 pawns before converting
 

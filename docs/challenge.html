@@ -62,6 +62,12 @@
   .pill{display:inline-block;font:600 11px ui-sans-serif;padding:2px 8px;
         border-radius:99px;background:#232735;border:1px solid #333949;
         color:var(--dim)}
+  text.pc{font-family:"Segoe UI Symbol","Apple Symbols","Noto Sans Symbols 2",
+          "DejaVu Sans","FreeSerif",sans-serif;font-size:35px;
+          text-anchor:middle;dominant-baseline:central;paint-order:stroke;
+          user-select:none}
+  text.pc.w{fill:#fbfbfb;stroke:#22262e;stroke-width:1.7}
+  text.pc.b{fill:#22262e;stroke:#e9edf5;stroke-width:1.1}
   .lgl{fill:var(--sel);opacity:.32}
   .cap{fill:none;stroke:var(--sel);stroke-width:3.4;opacity:.55}
   .from{fill:var(--sel);opacity:.30}
@@ -183,10 +189,6 @@ let lastMove=null,arrows=[],showCoords=false;
 
 fetch('challenge.json').then(r=>r.json()).then(d=>{
   D=d;
-  const sp=document.createElementNS('http://www.w3.org/2000/svg','svg');
-  sp.setAttribute('style','position:absolute;width:0;height:0');
-  sp.innerHTML='<defs>'+d.sprite+'</defs>';
-  document.body.appendChild(sp);
   order=d.positions.map((_,i)=>i);
   shuffle(order);
   try{ showCoords = localStorage.getItem('bp_coords')==='1'; }catch(e){}
@@ -206,8 +208,11 @@ function parseFEN(f){
     }}
   return b;
 }
-const NAME={k:'king',q:'queen',r:'rook',b:'bishop',n:'knight',p:'pawn'};
-const href=p=>'#'+(p===p.toUpperCase()?'white':'black')+'-'+NAME[p.toLowerCase()];
+/* Unicode chess characters, solid glyphs for both colours. The outline
+   codepoints (U+2654-2659) render inconsistently across platforms and can
+   disappear on a light square, so colour is carried by fill and outline
+   instead. Nothing here is third-party artwork. */
+const GLYPH={k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟'};
 
 /* ---------- board ---------- */
 function draw(){
@@ -239,8 +244,10 @@ function draw(){
   for(let i=0;i<64;i++){
     if(!brd[i]) continue;
     const [x,y]=xy(i,S);
-    pc+=`<g transform="translate(${x},${y}) scale(${S/45})" data-sq="${i}"
-          style="cursor:${scored?'default':'grab'}"><use href="${href(brd[i])}"/></g>`;
+    const white=brd[i]===brd[i].toUpperCase();
+    pc+=`<text class="pc ${white?'w':'b'}" x="${x+S/2}" y="${y+S/2+1}"
+          data-sq="${i}" style="cursor:${scored?'default':'grab'}"
+          >${GLYPH[brd[i].toLowerCase()]}</text>`;
   }
   // Files along the bottom, ranks down the left, following the flip so they
   // always match what you are looking at.

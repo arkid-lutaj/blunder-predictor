@@ -44,6 +44,9 @@ import pandas as pd
 # Label arithmetic, mirrored from SPEC.md
 # ---------------------------------------------------------------------------
 
+# The centipawn -> win%% logistic below is LICHESS'S, not this
+# project's: the constant and the form are documented at
+# https://lichess.org/page/accuracy. See THIRD_PARTY.md.
 WIN_K = 0.00368208          # win% = 50 + 50 * (2 / (1 + exp(-k*cp)) - 1)
 CP_CLAMP = 1000.0           # cp is clamped to +/-1000 before the transform
 
