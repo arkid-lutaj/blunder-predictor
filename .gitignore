@@ -32,3 +32,6 @@ temporary files/
 
 # Personal build plan, not part of the public repo
 RUNBOOK.md
+
+# make test output
+build/

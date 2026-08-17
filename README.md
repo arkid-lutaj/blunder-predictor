@@ -1,5 +1,9 @@
 # Chess Blunder Predictor
 
+[![ci](https://github.com/arkid-lutaj/blunder-predictor/actions/workflows/ci.yml/badge.svg)](https://github.com/arkid-lutaj/blunder-predictor/actions/workflows/ci.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![demo](https://img.shields.io/badge/demo-live-6ea8fe.svg)](https://arkid-lutaj.github.io/blunder-predictor/challenge.html)
+
 **How often does a human blunder here?** Not "what is the best move" - a
 calibrated probability of human error, by rating. A 1400 blunders in this
 position 23% of the time; a 2000 blunders 4%.
@@ -97,19 +101,30 @@ ordering of difficulty roughly right and understates its range by about 6x.
 
 ## Running it
 
-```bash
-python src/status.py     # reads the filesystem, prints the next command
-```
-
-Every script takes explicit `--data` and `--out` paths. Two self-test without
-any data:
+A 500-game annotated sample is committed, so the whole pipeline runs on a fresh
+clone with no download:
 
 ```bash
-python src/decompose.py --self-test
-python src/build_features.py --self-test
+make setup
+make test     # parse, features, splits, train, then assert the claims
 ```
 
-Roughly 6 hours end to end from the raw 28 GB dump, most of it Stockfish.
+That last step is what CI runs. The assertions are the README's claims written
+as things that can fail:
+
+| assertion | on this sample |
+|---|---|
+| the label fires on 2-5% of plies | 4.09% |
+| no post-move column reaches the model | 56 features, 0 leaked |
+| no player is in both train and test | 0 of 200 test players |
+| the player split beats a naive one | 0.00% against 4.27% leakage |
+| the model beats the base rate | Brier skill +0.0322 |
+
+Each one was checked by injecting the fault and confirming the build goes red.
+
+Full data is roughly 6 hours end to end from the 28 GB dump, most of it
+Stockfish. `python src/status.py` reads the filesystem and prints the exact next
+command; `make help` lists every stage.
 
 **[FINDINGS.md](FINDINGS.md)** has every number, plus the bugs and dead ends.
 **[SPEC.md](SPEC.md)** has the invariants.

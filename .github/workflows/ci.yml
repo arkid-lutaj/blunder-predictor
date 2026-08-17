@@ -1,0 +1,70 @@
+name: ci
+
+# Runs the whole pipeline on the committed sample and asserts the project's
+# claims. No download, no secrets, a couple of minutes.
+#
+# The assertions in src/ci_check.py are the README's claims written as things
+# that can fail: the label fires on 2-5% of plies, no post-move column reaches
+# the model, no player is in both train and test, and the model beats the base
+# rate. They were verified to fail by injecting each fault.
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Self-tests, no data needed
+        run: |
+          python src/decompose.py --self-test
+          python src/build_features.py --self-test
+
+      - name: Parse the sample games
+        run: |
+          mkdir -p build
+          python src/parse_lichess.py data/sample_games.pgn \
+            --out build/pos.parquet --categories blitz,rapid
+
+      - name: Build features
+        run: python src/build_features.py --data build/pos.parquet --out build/feat.parquet --workers 2
+
+      - name: Player-disjoint splits
+        run: python src/make_splits.py --data build/feat.parquet --out build/splits.parquet
+
+      - name: Train a small model
+        run: |
+          python src/train.py --data build/feat.parquet --splits build/splits.parquet \
+            --feature-set engine_free --n-trials 1 --rounds 300 --out build/model
+
+      - name: Assert the project's claims
+        run: |
+          python src/ci_check.py \
+            --positions build/pos.parquet \
+            --features build/feat.parquet \
+            --splits build/splits.parquet \
+            --model build/model
+
+      - name: Upload artefacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: build/
+          retention-days: 5
