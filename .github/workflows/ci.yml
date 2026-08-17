@@ -21,9 +21,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Must match what requirements.txt was pinned against. scipy 1.18 needs
+      # >= 3.12, so 3.11 cannot resolve the lock file at all.
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.14"
           cache: pip
 
       - name: Install

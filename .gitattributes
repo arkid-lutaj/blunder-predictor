@@ -1,0 +1,9 @@
+# Make requires tab-indented recipe lines and LF endings. A CRLF checkout on
+# Windows silently breaks `make` for anyone who clones there.
+Makefile        text eol=lf
+*.yml           text eol=lf
+*.py            text eol=lf
+*.md            text eol=lf
+*.pgn           text eol=lf
+*.parquet       binary
+*.png           binary
