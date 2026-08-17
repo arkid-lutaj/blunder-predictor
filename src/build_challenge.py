@@ -321,6 +321,13 @@ HTML = r"""<!doctype html>
   .lgl{fill:var(--sel);opacity:.32}
   .cap{fill:none;stroke:var(--sel);stroke-width:3.4;opacity:.55}
   .from{fill:var(--sel);opacity:.30}
+  .hl{fill:#e6b455;opacity:.34}
+  .co{fill:#5d6472;font:600 9px ui-monospace,monospace;pointer-events:none}
+  .co.lt{fill:#a9a291}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:9px;font-size:12px;
+          color:var(--dim);align-items:center}
+  .swatch{display:inline-block;width:22px;height:3px;border-radius:2px;
+          vertical-align:middle;margin-right:5px}
   .hide{display:none!important}
 </style>
 <div class="wrap">
@@ -392,12 +399,17 @@ HTML = r"""<!doctype html>
       <div class="tried" id="tried"></div>
       <div class="row" style="margin-top:12px">
         <button id="undo" disabled>Try another move</button>
-        <button id="reveal">Show the best move</button>
+        <button id="reveal">Show best &amp; worst</button>
         <button id="next" class="primary">Next position</button>
       </div>
+      <div class="legend" id="legend"></div>
+      <div class="row" style="margin-top:10px">
+        <button id="coords">Show coordinates</button>
+      </div>
       <div class="dim" style="margin-top:9px" id="hint">
-        The bar on the left is the engine's evaluation: how much of the board it
-        fills is your chance of winning. The blue line is where you started.
+        The bar on the left is the engine's evaluation: how much of it is filled
+        is your chance of winning. The blue line marks where you started, so
+        watch it drop below the line when a move costs you something.
       </div>
     </div>
   </div>
@@ -423,6 +435,7 @@ const $=i=>document.getElementById(i);
 let D=null,order=[],idx=0;
 let pos=null,brd=null,flip=false,sel=null,scored=false,tried=[];
 let runN=10,played=[],finished=false;
+let lastMove=null,arrows=[],showCoords=false;
 
 fetch('challenge.json').then(r=>r.json()).then(d=>{
   D=d;
@@ -432,6 +445,8 @@ fetch('challenge.json').then(r=>r.json()).then(d=>{
   document.body.appendChild(sp);
   order=d.positions.map((_,i)=>i);
   shuffle(order);
+  try{ showCoords = localStorage.getItem('bp_coords')==='1'; }catch(e){}
+  $('coords').textContent=showCoords?'Hide coordinates':'Show coordinates';
   setMode(10);
 });
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=(Math.random()*(i+1))|0;
@@ -459,7 +474,14 @@ function draw(){
     const light=(file+rank)%2===1;
     sq.push(`<rect x="${x}" y="${y}" width="${S}" height="${S}" fill="${light?'var(--lt)':'var(--dk)'}"/>`);
   }
-  let mk='',pc='';
+  let mk='',pc='',co='',ar='';
+  // the move that was just played, so you can see what moved where
+  if(lastMove){
+    for(const s of [lastMove.from,lastMove.to]){
+      const [x,y]=xy(s,S);
+      mk+=`<rect class="hl" x="${x}" y="${y}" width="${S}" height="${S}"/>`;
+    }
+  }
   if(sel!==null){
     const [x,y]=xy(sel,S);
     mk+=`<rect class="from" x="${x}" y="${y}" width="${S}" height="${S}"/>`;
@@ -476,7 +498,47 @@ function draw(){
     pc+=`<g transform="translate(${x},${y}) scale(${S/45})" data-sq="${i}"
           style="cursor:${scored?'default':'grab'}"><use href="${href(brd[i])}"/></g>`;
   }
-  $('board').innerHTML=sq.join('')+mk+pc;
+  // Files along the bottom, ranks down the left, following the flip so they
+  // always match what you are looking at.
+  if(showCoords){
+    for(let j=0;j<8;j++){
+      const ch=String.fromCharCode(97+(flip?7-j:j));
+      const light=(j+0)%2===(flip?1:0);
+      co+=`<text class="co${light?' lt':''}" x="${j*S+S-3}" y="${8*S-3}"
+            text-anchor="end">${ch}</text>`;
+    }
+    for(let i=0;i<8;i++){
+      const rank=flip?i+1:8-i;
+      const light=(i+7)%2===(flip?1:0);
+      co+=`<text class="co${light?' lt':''}" x="3" y="${i*S+12}">${rank}</text>`;
+    }
+  }
+  // arrows last so they sit on top of the pieces
+  for(const a of arrows) ar+=arrowSvg(a,S);
+  $('board').innerHTML=sq.join('')+mk+co+pc+ar;
+}
+
+/* An arrow from one square to another, the way every chess site draws a
+   suggested move. Shaft stops short of the target so the head lands on the
+   square rather than past it. */
+function arrowSvg(a,S){
+  const [x1,y1]=xy(a.from,S), [x2,y2]=xy(a.to,S);
+  const cx1=x1+S/2, cy1=y1+S/2, cx2=x2+S/2, cy2=y2+S/2;
+  const dx=cx2-cx1, dy=cy2-cy1, L=Math.hypot(dx,dy)||1;
+  const ux=dx/L, uy=dy/L, head=14, w=a.w||6.5;
+  const sx=cx1+ux*14, sy=cy1+uy*14;
+  const ex=cx2-ux*head, ey=cy2-uy*head;
+  const px=-uy, py=ux, h=head*0.62;
+  const pts=`${cx2-ux*2},${cy2-uy*2} ${ex+px*h},${ey+py*h} ${ex-px*h},${ey-py*h}`;
+  return `<line x1="${sx}" y1="${sy}" x2="${ex}" y2="${ey}" stroke="${a.color}"
+           stroke-width="${w}" stroke-linecap="round" opacity="${a.op||0.9}"/>`
+       + `<polygon points="${pts}" fill="${a.color}" opacity="${a.op||0.9}"/>`;
+}
+function mvSquares(u){return {from:sqIdx(u.slice(0,2)), to:sqIdx(u.slice(2,4))};}
+function setLegend(items){
+  $('legend').innerHTML=items.map(i=>
+    `<span><span class="swatch" style="background:${i.c}"></span>${i.t}</span>`
+  ).join('');
 }
 function xy(i,S){const f=i%8,r=(i/8)|0;return [(flip?7-f:f)*S,(flip?r:7-r)*S];}
 function sqIdx(s){return (s.charCodeAt(1)-49)*8+(s.charCodeAt(0)-97);}
@@ -607,12 +669,23 @@ function refreshEstimate(){
 /* ---------- a turn ---------- */
 function play(mv){
   scored=true; tried.push(mv);
+  const sq=mvSquares(mv.u);
+  const best=pos.moves.reduce((a,b)=>b.w>a.w?b:a);
+  lastMove=sq;
+  // your move in its verdict colour, and if it was not the best, the best move
+  // alongside it so the comparison is on the board rather than in a sentence
+  arrows=[{...sq, color: mv.b?'#f2777a':'#7ec699'}];
+  const items=[{c: mv.b?'#f2777a':'#7ec699', t:'your move'}];
+  if(mv.d>=0.05){
+    arrows.push({...mvSquares(best.u), color:'#6ea8fe', w:5, op:0.75});
+    items.push({c:'#6ea8fe', t:'best move ('+best.s+')'});
+  }
+  setLegend(items);
   apply(mv.u); draw();
   if(tried.length===1){
     played.push({p:order[idx], blundered:!!mv.b});
   }
   setBar(mv.w,pos.before);
-  const best=pos.moves.reduce((a,b)=>b.w>a.w?b:a);
   const pred=curAt();
   $('verdict').innerHTML =
     (mv.b?`<b style="color:var(--bad)">That one loses a lot.</b> `
@@ -644,7 +717,8 @@ function paintTried(){
     `<span class="tag ${m.b?'b':'g'}">${m.s} ${m.d<0.05?'best':'-'+m.d.toFixed(0)}</span>`).join('');
 }
 $('undo').onclick=()=>{
-  brd=parseFEN(pos.fen); scored=false; sel=null; draw();
+  brd=parseFEN(pos.fen); scored=false; sel=null;
+  lastMove=null; arrows=[]; setLegend([]); draw();
   setBar(pos.before,pos.before);
   $('verdict').innerHTML='Try a different move. <span class="dim">Only your '
     +'first attempt counted towards the estimate.</span>';
@@ -653,10 +727,25 @@ $('undo').onclick=()=>{
 $('reveal').onclick=()=>{
   const best=pos.moves.reduce((a,b)=>b.w>a.w?b:a);
   const worst=pos.moves.reduce((a,b)=>b.w<a.w?b:a);
-  $('verdict').innerHTML=`Best: <b>${best.s}</b> (${best.w.toFixed(0)}% win). `
-    +`Worst: <b>${worst.s}</b> (${worst.w.toFixed(0)}%). `
+  // Draw both on the board from the STARTING position, so the arrows point at
+  // squares that are still where they were.
+  brd=parseFEN(pos.fen); lastMove=null; sel=null;
+  arrows=[{...mvSquares(best.u), color:'#7ec699'},
+          {...mvSquares(worst.u), color:'#f2777a', w:5, op:0.8}];
+  setLegend([{c:'#7ec699', t:'best: '+best.s+' ('+best.w.toFixed(0)+'% win)'},
+             {c:'#f2777a', t:'worst: '+worst.s+' ('+worst.w.toFixed(0)+'%)'}]);
+  draw();
+  $('verdict').innerHTML=`<b>${best.s}</b> keeps ${best.w.toFixed(0)}% win, `
+    +`<b>${worst.s}</b> leaves ${worst.w.toFixed(0)}%. `
     +`<span class="dim">${pos.moves.filter(m=>m.b).length} of ${pos.moves.length} `
-    +`legal moves throw away 20 points or more.</span>`;
+    +`legal moves throw away 20 points or more. Board reset to the start so the `
+    +`arrows line up.</span>`;
+};
+$('coords').onclick=()=>{
+  showCoords=!showCoords;
+  $('coords').textContent=showCoords?'Hide coordinates':'Show coordinates';
+  try{localStorage.setItem('bp_coords',showCoords?'1':'0');}catch(e){}
+  draw();
 };
 $('next').onclick=()=>{ if(finished) return; idx=(idx+1)%order.length; render(); };
 $('hideHow').onclick=()=>$('howto').classList.add('hide');
@@ -682,6 +771,7 @@ function setMode(n){
 function render(){
   pos=D.positions[order[idx]];
   brd=parseFEN(pos.fen); flip=!pos.white; sel=null; scored=false; tried=[];
+  lastMove=null; arrows=[]; setLegend([]);
   draw(); setBar(pos.before,pos.before);
   $('toMove').textContent=(pos.white?'White':'Black')+' to move - that is you';
   $('posMeta').textContent=pos.n_moves+' legal moves';
