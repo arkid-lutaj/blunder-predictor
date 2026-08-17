@@ -19,11 +19,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      # v5 / v6 / v5 are the majors that run on Node 24. The previous v4 / v5 /
+      # v4 target Node 20, which the runners now force onto 24 and warn about.
+      - uses: actions/checkout@v5
 
       # Must match what requirements.txt was pinned against. scipy 1.18 needs
       # >= 3.12, so 3.11 cannot resolve the lock file at all.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
           cache: pip
@@ -63,10 +65,14 @@ jobs:
             --splits build/splits.parquet \
             --model build/model
 
+      # Only useful when the failure happened after build/ was populated. An
+      # install-step failure leaves nothing there, and the default behaviour is
+      # to warn about the empty path, which reads as a second problem.
       - name: Upload artefacts on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: build-output
           path: build/
+          if-no-files-found: ignore
           retention-days: 5
