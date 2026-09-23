@@ -39,6 +39,7 @@ jobs:
         run: |
           python src/decompose.py --self-test
           python src/build_features.py --self-test
+          python src/export_web.py --self-test
 
       - name: Parse the sample games
         run: |

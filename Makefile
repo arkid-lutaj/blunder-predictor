@@ -60,6 +60,7 @@ $(B)/model.txt: $(B)/feat.parquet $(B)/splits.parquet
 test: $(B)/model.txt
 	$(PY) src/decompose.py --self-test
 	$(PY) src/build_features.py --self-test
+	$(PY) src/export_web.py --self-test
 	$(PY) src/ci_check.py --positions $(B)/pos.parquet \
 	  --features $(B)/feat.parquet --splits $(B)/splits.parquet \
 	  --model $(B)/model
