@@ -16,7 +16,11 @@ on:
 
 jobs:
   pipeline:
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest. GitHub moves that label to Ubuntu 26 during
+    # October 2026, and a runner OS change is a silent variable in a job whose
+    # whole purpose is to assert numbers. Bump this deliberately, with the run
+    # that proves the assertions still hold.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       # v5 / v6 / v5 are the majors that run on Node 24. The previous v4 / v5 /
